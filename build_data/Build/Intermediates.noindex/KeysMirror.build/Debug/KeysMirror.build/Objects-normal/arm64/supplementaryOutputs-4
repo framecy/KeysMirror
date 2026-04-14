@@ -1,0 +1,23 @@
+{
+  "/Users/chace/Documents/KeysMirror/KeysMirror/App/KeysMirrorApp.swift" : {
+    "const-values" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeysMirrorApp.swiftconstvalues",
+    "dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeysMirrorApp.d",
+    "diagnostics" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeysMirrorApp.dia",
+    "object" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeysMirrorApp.o",
+    "swift-dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeysMirrorApp.swiftdeps"
+  },
+  "/Users/chace/Documents/KeysMirror/KeysMirror/Models/KeyMapping.swift" : {
+    "const-values" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeyMapping.swiftconstvalues",
+    "dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeyMapping.d",
+    "diagnostics" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeyMapping.dia",
+    "object" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeyMapping.o",
+    "swift-dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeyMapping.swiftdeps"
+  },
+  "/Users/chace/Documents/KeysMirror/KeysMirror/Services/KeyInterceptor.swift" : {
+    "const-values" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeyInterceptor.swiftconstvalues",
+    "dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeyInterceptor.d",
+    "diagnostics" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeyInterceptor.dia",
+    "object" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeyInterceptor.o",
+    "swift-dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/KeyInterceptor.swiftdeps"
+  }
+}

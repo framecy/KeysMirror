@@ -1,0 +1,556 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		038A5443A954584635744310 /* MappingIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD63521281082932F2F5957 /* MappingIndicatorView.swift */; };
+		04774DC03398EB65FAC7CCCD /* ModifierHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35819281FE10182022B6D36 /* ModifierHelper.swift */; };
+		063253E4EF0FE3A017858CF3 /* MappingEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20810993CD658291FA61DCEE /* MappingEditorView.swift */; };
+		23560DF378F6D26418CC5226 /* AppProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6808A28D20B47763BDCB67BB /* AppProfile.swift */; };
+		2499915C0C9D57FCD6635AED /* KeysMirrorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D42224CBCA0E169AC0DFC90 /* KeysMirrorApp.swift */; };
+		343875D677C5D454FDDD1562 /* PermissionHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F5B0BA1F849ECBDDCF7D401 /* PermissionHelper.swift */; };
+		44A5A0D43AA7EE8EF65A4EF6 /* OverlayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67784B299BF04C812D7B49DF /* OverlayController.swift */; };
+		4582C72E4AFCB4F63E5B0C15 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B38CF155BFE4B2A42922296 /* AppDelegate.swift */; };
+		64751EA8D961437538287785 /* MappingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1737F8C103F87BAD46FF79B /* MappingStore.swift */; };
+		66E37D48DC11343B6FFA8616 /* AppResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3032D0E1F5637E741C758C /* AppResolver.swift */; };
+		6B0A893B16B6288969A0C013 /* ClickSimulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41D76167B010AD4C817C515 /* ClickSimulator.swift */; };
+		833DBA84D369E4E6FE045FB3 /* CoordinateConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2075C9B711E2683278167855 /* CoordinateConverter.swift */; };
+		85AA8B3E91B1256F31B90B58 /* PointRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D1A040F3A657B277166757 /* PointRecorder.swift */; };
+		8D1CACBB4AB187372B5C21DB /* TriggerRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A1A5209AEE7D51C7EF49E2 /* TriggerRecorder.swift */; };
+		935D6F1684A7694F0DDE81A8 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BFAAD34EB90ECCA4FF80ABC /* StatusBarController.swift */; };
+		9746EAD9F1EA28795CAD0A74 /* CGKeyCodeNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C90066108D5AEF14AF5911D /* CGKeyCodeNames.swift */; };
+		9EA824AFCE9C15535DF925DC /* MappingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1FC13101F864E68BF2C3F74 /* MappingListView.swift */; };
+		BAAA78BB6C88DBAA6E153B19 /* ConfigurationWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B7AFB19133921625946BDBA /* ConfigurationWindow.swift */; };
+		C7D8CAC9AFA188B561C5B052 /* MappingStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247424528B3B0B8A455997F1 /* MappingStoreTests.swift */; };
+		C7E9604CA4D6BD9B5EA5A874 /* WindowLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1833A76A39E06BC18C698FE6 /* WindowLocator.swift */; };
+		CBC9ED103E620C4CBB206EE9 /* PermissionChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C9073A1CF605028F77C60D /* PermissionChecker.swift */; };
+		CD4E59757E9494236E520640 /* AppPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9489B30D33BCAFB363BAA268 /* AppPickerView.swift */; };
+		D565289502F06331BC18AC4D /* KeyInterceptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE2D20A5F48DD445F190EC13 /* KeyInterceptor.swift */; };
+		DE2F834203EA5C1153499AAD /* KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A81D065BCAA4647BCFA282 /* KeyMapping.swift */; };
+		E08BF3530D871B3B651440C6 /* CoordinateConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CED6175B47061D770C61473A /* CoordinateConverterTests.swift */; };
+		E2D162DEB029A467CF668136 /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A213DDF4583E3F0E0A589609 /* AppLogger.swift */; };
+		EF076CD41E145A6FD3DD9317 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9A0D1FB1293197FB99CEEE44 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		809018BE5D893C2053B38E0E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AD60211D545E931FCBB509B1 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 99483BF8BD497E193E9DD1E0;
+			remoteInfo = KeysMirror;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		1833A76A39E06BC18C698FE6 /* WindowLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowLocator.swift; sourceTree = "<group>"; };
+		1B38CF155BFE4B2A42922296 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		2075C9B711E2683278167855 /* CoordinateConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinateConverter.swift; sourceTree = "<group>"; };
+		20810993CD658291FA61DCEE /* MappingEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MappingEditorView.swift; sourceTree = "<group>"; };
+		247424528B3B0B8A455997F1 /* MappingStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MappingStoreTests.swift; sourceTree = "<group>"; };
+		35A81D065BCAA4647BCFA282 /* KeyMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyMapping.swift; sourceTree = "<group>"; };
+		36D1A040F3A657B277166757 /* PointRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointRecorder.swift; sourceTree = "<group>"; };
+		3C90066108D5AEF14AF5911D /* CGKeyCodeNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CGKeyCodeNames.swift; sourceTree = "<group>"; };
+		4B7AFB19133921625946BDBA /* ConfigurationWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationWindow.swift; sourceTree = "<group>"; };
+		59277160DBF7374ED36B1DD7 /* KeysMirrorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeysMirrorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		66E53974AF56C0B0CF4C7686 /* KeysMirror.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeysMirror.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		67784B299BF04C812D7B49DF /* OverlayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayController.swift; sourceTree = "<group>"; };
+		6808A28D20B47763BDCB67BB /* AppProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppProfile.swift; sourceTree = "<group>"; };
+		6F5B0BA1F849ECBDDCF7D401 /* PermissionHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionHelper.swift; sourceTree = "<group>"; };
+		7BFAAD34EB90ECCA4FF80ABC /* StatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarController.swift; sourceTree = "<group>"; };
+		7C3032D0E1F5637E741C758C /* AppResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppResolver.swift; sourceTree = "<group>"; };
+		9489B30D33BCAFB363BAA268 /* AppPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPickerView.swift; sourceTree = "<group>"; };
+		9A0D1FB1293197FB99CEEE44 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9D42224CBCA0E169AC0DFC90 /* KeysMirrorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeysMirrorApp.swift; sourceTree = "<group>"; };
+		A1FC13101F864E68BF2C3F74 /* MappingListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MappingListView.swift; sourceTree = "<group>"; };
+		A213DDF4583E3F0E0A589609 /* AppLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogger.swift; sourceTree = "<group>"; };
+		AE2D20A5F48DD445F190EC13 /* KeyInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyInterceptor.swift; sourceTree = "<group>"; };
+		B1737F8C103F87BAD46FF79B /* MappingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MappingStore.swift; sourceTree = "<group>"; };
+		B41D76167B010AD4C817C515 /* ClickSimulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickSimulator.swift; sourceTree = "<group>"; };
+		C7C9073A1CF605028F77C60D /* PermissionChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionChecker.swift; sourceTree = "<group>"; };
+		CED6175B47061D770C61473A /* CoordinateConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinateConverterTests.swift; sourceTree = "<group>"; };
+		D5A1A5209AEE7D51C7EF49E2 /* TriggerRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerRecorder.swift; sourceTree = "<group>"; };
+		F35819281FE10182022B6D36 /* ModifierHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModifierHelper.swift; sourceTree = "<group>"; };
+		FBD63521281082932F2F5957 /* MappingIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MappingIndicatorView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		3634EF903B89390967FA3694 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				9489B30D33BCAFB363BAA268 /* AppPickerView.swift */,
+				4B7AFB19133921625946BDBA /* ConfigurationWindow.swift */,
+				20810993CD658291FA61DCEE /* MappingEditorView.swift */,
+				FBD63521281082932F2F5957 /* MappingIndicatorView.swift */,
+				A1FC13101F864E68BF2C3F74 /* MappingListView.swift */,
+				7BFAAD34EB90ECCA4FF80ABC /* StatusBarController.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		40CC0A703B082CC6F191271C /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				A213DDF4583E3F0E0A589609 /* AppLogger.swift */,
+				3C90066108D5AEF14AF5911D /* CGKeyCodeNames.swift */,
+				2075C9B711E2683278167855 /* CoordinateConverter.swift */,
+				F35819281FE10182022B6D36 /* ModifierHelper.swift */,
+			);
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+		4EEF274EB5959C5194C54AB8 /* KeysMirrorTests */ = {
+			isa = PBXGroup;
+			children = (
+				CED6175B47061D770C61473A /* CoordinateConverterTests.swift */,
+				247424528B3B0B8A455997F1 /* MappingStoreTests.swift */,
+			);
+			path = KeysMirrorTests;
+			sourceTree = "<group>";
+		};
+		5774BE2A6C49BC8D729C7CEB /* KeysMirror */ = {
+			isa = PBXGroup;
+			children = (
+				95BDFACA1F50F622DBE47061 /* App */,
+				765D082DFC79993BB08EEA47 /* Models */,
+				9AEB4F9A8098AC62E8F25EDC /* Resources */,
+				BA322EAB300EBCB28D731940 /* Services */,
+				40CC0A703B082CC6F191271C /* Utilities */,
+				3634EF903B89390967FA3694 /* Views */,
+			);
+			path = KeysMirror;
+			sourceTree = "<group>";
+		};
+		6214B60139A66D6894D6094C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				66E53974AF56C0B0CF4C7686 /* KeysMirror.app */,
+				59277160DBF7374ED36B1DD7 /* KeysMirrorTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		765D082DFC79993BB08EEA47 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				6808A28D20B47763BDCB67BB /* AppProfile.swift */,
+				35A81D065BCAA4647BCFA282 /* KeyMapping.swift */,
+				B1737F8C103F87BAD46FF79B /* MappingStore.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		95BDFACA1F50F622DBE47061 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				1B38CF155BFE4B2A42922296 /* AppDelegate.swift */,
+				9D42224CBCA0E169AC0DFC90 /* KeysMirrorApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		9AEB4F9A8098AC62E8F25EDC /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				9A0D1FB1293197FB99CEEE44 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		BA322EAB300EBCB28D731940 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				7C3032D0E1F5637E741C758C /* AppResolver.swift */,
+				B41D76167B010AD4C817C515 /* ClickSimulator.swift */,
+				AE2D20A5F48DD445F190EC13 /* KeyInterceptor.swift */,
+				67784B299BF04C812D7B49DF /* OverlayController.swift */,
+				C7C9073A1CF605028F77C60D /* PermissionChecker.swift */,
+				6F5B0BA1F849ECBDDCF7D401 /* PermissionHelper.swift */,
+				36D1A040F3A657B277166757 /* PointRecorder.swift */,
+				D5A1A5209AEE7D51C7EF49E2 /* TriggerRecorder.swift */,
+				1833A76A39E06BC18C698FE6 /* WindowLocator.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		EA3D117D902121D1843EF3F5 = {
+			isa = PBXGroup;
+			children = (
+				5774BE2A6C49BC8D729C7CEB /* KeysMirror */,
+				4EEF274EB5959C5194C54AB8 /* KeysMirrorTests */,
+				6214B60139A66D6894D6094C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0915A807B3B955272C87810A /* KeysMirrorTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EB43D0B2E883D25D69530B42 /* Build configuration list for PBXNativeTarget "KeysMirrorTests" */;
+			buildPhases = (
+				0137E50CEE4083B9982262B7 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				987833A9BDCAD4489AB0468B /* PBXTargetDependency */,
+			);
+			name = KeysMirrorTests;
+			packageProductDependencies = (
+			);
+			productName = KeysMirrorTests;
+			productReference = 59277160DBF7374ED36B1DD7 /* KeysMirrorTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		99483BF8BD497E193E9DD1E0 /* KeysMirror */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F7F0B5A497D238B04E6262CA /* Build configuration list for PBXNativeTarget "KeysMirror" */;
+			buildPhases = (
+				079E09E9554C579A3DB62A9B /* Sources */,
+				C510E6CA184C8B46ED23941A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KeysMirror;
+			packageProductDependencies = (
+			);
+			productName = KeysMirror;
+			productReference = 66E53974AF56C0B0CF4C7686 /* KeysMirror.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AD60211D545E931FCBB509B1 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2640;
+				TargetAttributes = {
+					0915A807B3B955272C87810A = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+					99483BF8BD497E193E9DD1E0 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 1B226BCD5B4C74E0F1C362A7 /* Build configuration list for PBXProject "KeysMirror" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = EA3D117D902121D1843EF3F5;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6214B60139A66D6894D6094C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				99483BF8BD497E193E9DD1E0 /* KeysMirror */,
+				0915A807B3B955272C87810A /* KeysMirrorTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C510E6CA184C8B46ED23941A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EF076CD41E145A6FD3DD9317 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0137E50CEE4083B9982262B7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E08BF3530D871B3B651440C6 /* CoordinateConverterTests.swift in Sources */,
+				C7D8CAC9AFA188B561C5B052 /* MappingStoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		079E09E9554C579A3DB62A9B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4582C72E4AFCB4F63E5B0C15 /* AppDelegate.swift in Sources */,
+				E2D162DEB029A467CF668136 /* AppLogger.swift in Sources */,
+				CD4E59757E9494236E520640 /* AppPickerView.swift in Sources */,
+				23560DF378F6D26418CC5226 /* AppProfile.swift in Sources */,
+				66E37D48DC11343B6FFA8616 /* AppResolver.swift in Sources */,
+				9746EAD9F1EA28795CAD0A74 /* CGKeyCodeNames.swift in Sources */,
+				6B0A893B16B6288969A0C013 /* ClickSimulator.swift in Sources */,
+				BAAA78BB6C88DBAA6E153B19 /* ConfigurationWindow.swift in Sources */,
+				833DBA84D369E4E6FE045FB3 /* CoordinateConverter.swift in Sources */,
+				D565289502F06331BC18AC4D /* KeyInterceptor.swift in Sources */,
+				DE2F834203EA5C1153499AAD /* KeyMapping.swift in Sources */,
+				2499915C0C9D57FCD6635AED /* KeysMirrorApp.swift in Sources */,
+				063253E4EF0FE3A017858CF3 /* MappingEditorView.swift in Sources */,
+				038A5443A954584635744310 /* MappingIndicatorView.swift in Sources */,
+				9EA824AFCE9C15535DF925DC /* MappingListView.swift in Sources */,
+				64751EA8D961437538287785 /* MappingStore.swift in Sources */,
+				04774DC03398EB65FAC7CCCD /* ModifierHelper.swift in Sources */,
+				44A5A0D43AA7EE8EF65A4EF6 /* OverlayController.swift in Sources */,
+				CBC9ED103E620C4CBB206EE9 /* PermissionChecker.swift in Sources */,
+				343875D677C5D454FDDD1562 /* PermissionHelper.swift in Sources */,
+				85AA8B3E91B1256F31B90B58 /* PointRecorder.swift in Sources */,
+				935D6F1684A7694F0DDE81A8 /* StatusBarController.swift in Sources */,
+				8D1CACBB4AB187372B5C21DB /* TriggerRecorder.swift in Sources */,
+				C7E9604CA4D6BD9B5EA5A874 /* WindowLocator.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		987833A9BDCAD4489AB0468B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 99483BF8BD497E193E9DD1E0 /* KeysMirror */;
+			targetProxy = 809018BE5D893C2053B38E0E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		044A5797831A4151B78E541D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = KeysMirror/KeysMirror.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				INFOPLIST_FILE = KeysMirror/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.keysmirror.KeysMirror;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		29F6105A77767955C1C08D2D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.keysmirror.KeysMirrorTests;
+				PRODUCT_MODULE_NAME = KeysMirrorTests;
+				PRODUCT_NAME = KeysMirrorTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/KeysMirror.app/Contents/MacOS/KeysMirror";
+			};
+			name = Debug;
+		};
+		5B15F36A28F0F8F09AE06BAC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = KeysMirror;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.3;
+			};
+			name = Release;
+		};
+		92EECEC259B373F2BE1BE99A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.keysmirror.KeysMirrorTests;
+				PRODUCT_MODULE_NAME = KeysMirrorTests;
+				PRODUCT_NAME = KeysMirrorTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/KeysMirror.app/Contents/MacOS/KeysMirror";
+			};
+			name = Release;
+		};
+		944A641460ACF559E561DBDF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = KeysMirror;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.3;
+			};
+			name = Debug;
+		};
+		FFA4A57DBCA94D318932E40F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = KeysMirror/KeysMirror.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				INFOPLIST_FILE = KeysMirror/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_BUNDLE_IDENTIFIER = com.keysmirror.KeysMirror;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1B226BCD5B4C74E0F1C362A7 /* Build configuration list for PBXProject "KeysMirror" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				944A641460ACF559E561DBDF /* Debug */,
+				5B15F36A28F0F8F09AE06BAC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EB43D0B2E883D25D69530B42 /* Build configuration list for PBXNativeTarget "KeysMirrorTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				29F6105A77767955C1C08D2D /* Debug */,
+				92EECEC259B373F2BE1BE99A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F7F0B5A497D238B04E6262CA /* Build configuration list for PBXNativeTarget "KeysMirror" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FFA4A57DBCA94D318932E40F /* Debug */,
+				044A5797831A4151B78E541D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AD60211D545E931FCBB509B1 /* Project object */;
+}

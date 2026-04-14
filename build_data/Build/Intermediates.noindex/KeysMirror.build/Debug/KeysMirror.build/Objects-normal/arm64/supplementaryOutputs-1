@@ -1,0 +1,23 @@
+{
+  "/Users/chace/Documents/KeysMirror/KeysMirror/App/AppDelegate.swift" : {
+    "const-values" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppDelegate.swiftconstvalues",
+    "dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppDelegate.d",
+    "diagnostics" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppDelegate.dia",
+    "object" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppDelegate.o",
+    "swift-dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppDelegate.swiftdeps"
+  },
+  "/Users/chace/Documents/KeysMirror/KeysMirror/Utilities/AppLogger.swift" : {
+    "const-values" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppLogger.swiftconstvalues",
+    "dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppLogger.d",
+    "diagnostics" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppLogger.dia",
+    "object" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppLogger.o",
+    "swift-dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppLogger.swiftdeps"
+  },
+  "/Users/chace/Documents/KeysMirror/KeysMirror/Views/AppPickerView.swift" : {
+    "const-values" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppPickerView.swiftconstvalues",
+    "dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppPickerView.d",
+    "diagnostics" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppPickerView.dia",
+    "object" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppPickerView.o",
+    "swift-dependencies" : "/Users/chace/Documents/KeysMirror/build_data/Build/Intermediates.noindex/KeysMirror.build/Debug/KeysMirror.build/Objects-normal/arm64/AppPickerView.swiftdeps"
+  }
+}
