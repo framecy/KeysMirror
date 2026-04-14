@@ -94,6 +94,11 @@ final class KeyInterceptor {
             return Unmanaged.passRetained(event)
         }
 
+        // 文字输入焦点检测：仅对键盘事件生效，鼠标侧键映射不受影响
+        if type == .keyDown && windowLocator.isFocusedElementTextInput(for: bundleId) {
+            return Unmanaged.passRetained(event)
+        }
+
         let matchingMapping = profile.mappings.first { mapping in
             switch (type, mapping.triggerType) {
             case (.keyDown, .keyboard):
