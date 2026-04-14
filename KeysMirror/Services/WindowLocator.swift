@@ -73,40 +73,6 @@ final class WindowLocator {
         return focusedWindowFrame(for: bundleIdentifier)
     }
 
-    /// 判断目标应用当前焦点元素是否为文字输入控件
-    func isFocusedElementTextInput(for bundleIdentifier: String) -> Bool {
-        guard let app = NSWorkspace.shared.runningApplications
-                .first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
-            return false
-        }
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
-
-        var focusedElement: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement) == .success,
-              let focusedElement else {
-            return false
-        }
-
-        var roleValue: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(
-                unsafeBitCast(focusedElement, to: AXUIElement.self),
-                kAXRoleAttribute as CFString,
-                &roleValue
-              ) == .success,
-              let role = roleValue as? String else {
-            return false
-        }
-
-        let textInputRoles: Set<String> = [
-            kAXTextFieldRole,
-            kAXTextAreaRole,
-            kAXComboBoxRole,
-            "AXSearchField",
-            "AXWebArea",
-        ]
-        return textInputRoles.contains(role)
-    }
-
     private func frame(for windowValue: CFTypeRef) -> CGRect? {
         guard CFGetTypeID(windowValue) == AXUIElementGetTypeID() else { return nil }
         let window = unsafeBitCast(windowValue, to: AXUIElement.self)

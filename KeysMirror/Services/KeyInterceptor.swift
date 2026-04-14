@@ -94,11 +94,6 @@ final class KeyInterceptor {
             return Unmanaged.passRetained(event)
         }
 
-        // 焦点在文字输入控件时放行所有键盘事件，避免干扰聊天等输入场景
-        if type == .keyDown && windowLocator.isFocusedElementTextInput(for: bundleId) {
-            return Unmanaged.passRetained(event)
-        }
-
         let matchingMapping = profile.mappings.first { mapping in
             switch (type, mapping.triggerType) {
             case (.keyDown, .keyboard):
