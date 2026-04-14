@@ -16,3 +16,7 @@ DerivedData/
 
 # Build output
 /build_data/
+
+# Profiling & misc
+*.profraw
+project.yml
