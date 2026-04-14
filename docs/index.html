@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KeysMirror — 让键盘掌控一切</title>
+  <meta name="description" content="KeysMirror 是一款 macOS 菜单栏工具，将键盘按键映射为应用窗口内的鼠标点击，无需修改游戏或应用本身。" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --text-primary:   #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-tertiary:  #86868b;
+      --bg-primary:     #ffffff;
+      --bg-secondary:   #f5f5f7;
+      --bg-dark:        #000000;
+      --accent:         #0071e3;
+      --accent-hover:   #0077ed;
+      --border:         rgba(0,0,0,.08);
+      --radius-lg:      20px;
+      --radius-xl:      28px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ── NAV ──────────────────────────────────── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      height: 48px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px;
+      background: rgba(255,255,255,.72);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo {
+      font-size: 17px; font-weight: 600; letter-spacing: -.3px;
+      color: var(--text-primary); text-decoration: none;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .nav-logo svg { width: 22px; height: 22px; }
+    .nav-links { display: flex; gap: 28px; }
+    .nav-links a {
+      font-size: 13px; color: var(--text-secondary);
+      text-decoration: none; transition: color .2s;
+    }
+    .nav-links a:hover { color: var(--text-primary); }
+    .nav-cta {
+      font-size: 13px; font-weight: 500;
+      color: var(--accent); text-decoration: none;
+      background: rgba(0,113,227,.1);
+      padding: 6px 14px; border-radius: 980px;
+      transition: background .2s;
+    }
+    .nav-cta:hover { background: rgba(0,113,227,.18); }
+
+    /* ── HERO ─────────────────────────────────── */
+    .hero {
+      min-height: 100svh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+      background: radial-gradient(ellipse 120% 80% at 50% -10%, #e8f0fb 0%, #f5f5f7 55%, #fff 100%);
+      position: relative; overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 60% 40% at 80% 20%, rgba(120,160,255,.18) 0%, transparent 60%),
+                  radial-gradient(ellipse 50% 35% at 20% 80%, rgba(180,130,255,.12) 0%, transparent 55%);
+      pointer-events: none;
+    }
+    .hero-eyebrow {
+      font-size: 14px; font-weight: 600; letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 18px;
+      opacity: 0; animation: fadeUp .7s .1s ease forwards;
+    }
+    .hero-title {
+      font-size: clamp(44px, 8vw, 96px);
+      font-weight: 700; letter-spacing: -.04em; line-height: 1.04;
+      color: var(--text-primary);
+      margin-bottom: 22px;
+      opacity: 0; animation: fadeUp .7s .2s ease forwards;
+    }
+    .hero-title em { font-style: normal; color: var(--accent); }
+    .hero-sub {
+      font-size: clamp(17px, 2.2vw, 22px);
+      font-weight: 400; line-height: 1.55;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin-bottom: 44px;
+      opacity: 0; animation: fadeUp .7s .3s ease forwards;
+    }
+    .hero-actions {
+      display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+      opacity: 0; animation: fadeUp .7s .4s ease forwards;
+    }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: var(--accent); color: #fff;
+      font-size: 16px; font-weight: 500;
+      padding: 14px 28px; border-radius: 980px;
+      text-decoration: none; transition: background .2s, transform .15s;
+    }
+    .btn-primary:hover { background: var(--accent-hover); transform: scale(1.02); }
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: transparent; color: var(--accent);
+      font-size: 16px; font-weight: 500;
+      padding: 14px 28px; border-radius: 980px; border: 1.5px solid rgba(0,113,227,.3);
+      text-decoration: none; transition: border-color .2s, background .2s;
+    }
+    .btn-secondary:hover { border-color: var(--accent); background: rgba(0,113,227,.06); }
+    .hero-note {
+      margin-top: 20px; font-size: 13px; color: var(--text-tertiary);
+      opacity: 0; animation: fadeUp .7s .5s ease forwards;
+    }
+
+    /* mock window */
+    .hero-window {
+      position: relative; margin-top: 72px;
+      width: min(860px, 90vw);
+      border-radius: var(--radius-xl);
+      background: #1c1c1e;
+      box-shadow: 0 60px 120px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.08);
+      overflow: hidden;
+      opacity: 0; animation: fadeUp .8s .55s ease forwards;
+    }
+    .window-bar {
+      height: 36px; background: #2c2c2e;
+      display: flex; align-items: center; padding: 0 16px; gap: 7px;
+    }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot-r { background: #ff5f57; }
+    .dot-y { background: #febc2e; }
+    .dot-g { background: #28c840; }
+    .window-body { padding: 24px; display: flex; gap: 16px; min-height: 280px; }
+    .win-sidebar {
+      width: 200px; flex-shrink: 0;
+      background: #2c2c2e; border-radius: 12px;
+      padding: 12px;
+    }
+    .win-sidebar-title {
+      font-size: 11px; font-weight: 600; letter-spacing: .06em;
+      text-transform: uppercase; color: #636366; padding: 4px 8px 10px;
+    }
+    .win-app {
+      display: flex; align-items: center; gap: 9px;
+      padding: 8px 10px; border-radius: 8px; cursor: default;
+      font-size: 13px; color: #ebebf5;
+    }
+    .win-app.active { background: rgba(255,255,255,.1); }
+    .win-app-dot { width: 8px; height: 8px; border-radius: 50%; background: #30d158; flex-shrink: 0; }
+    .win-main { flex: 1; }
+    .win-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 600; letter-spacing: .05em;
+      text-transform: uppercase; color: #30d158;
+      background: rgba(48,209,88,.12); padding: 4px 10px; border-radius: 6px;
+      margin-bottom: 16px;
+    }
+    .win-mapping-list { display: flex; flex-direction: column; gap: 8px; }
+    .win-mapping {
+      background: #2c2c2e; border-radius: 10px;
+      padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .win-mapping-left { display: flex; align-items: center; gap: 10px; }
+    .win-key {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: #3a3a3c; color: #f2f2f7;
+      font-size: 12px; font-weight: 600; font-family: monospace;
+      padding: 4px 10px; border-radius: 6px;
+      box-shadow: 0 2px 0 #000;
+      min-width: 32px;
+    }
+    .win-arrow { color: #636366; font-size: 13px; }
+    .win-label { font-size: 13px; color: #ebebf5; }
+    .win-coord { font-size: 11px; font-family: monospace; color: #636366; }
+    .win-dot-red {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: rgba(255,59,48,.8); box-shadow: 0 0 6px rgba(255,59,48,.6);
+    }
+
+    /* ── SECTIONS COMMON ─────────────────────── */
+    section { padding: 120px 24px; }
+    .section-eyebrow {
+      font-size: 13px; font-weight: 600; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--accent);
+      text-align: center; margin-bottom: 14px;
+    }
+    .section-title {
+      font-size: clamp(32px, 5vw, 56px);
+      font-weight: 700; letter-spacing: -.03em; line-height: 1.1;
+      text-align: center; color: var(--text-primary);
+      margin-bottom: 16px;
+    }
+    .section-sub {
+      font-size: 18px; line-height: 1.6; color: var(--text-secondary);
+      text-align: center; max-width: 540px; margin: 0 auto 64px;
+    }
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    /* ── FEATURES BENTO ──────────────────────── */
+    .features { background: var(--bg-secondary); }
+    .bento {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: auto auto;
+      gap: 16px;
+    }
+    .bento-card {
+      background: var(--bg-primary);
+      border-radius: var(--radius-xl);
+      padding: 40px 36px;
+      border: 1px solid var(--border);
+      transition: transform .25s, box-shadow .25s;
+    }
+    .bento-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,.08); }
+    .bento-card.wide { grid-column: span 2; }
+    .bento-icon {
+      width: 48px; height: 48px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 24px; font-size: 24px;
+    }
+    .bento-card h3 {
+      font-size: 22px; font-weight: 700; letter-spacing: -.02em;
+      margin-bottom: 10px;
+    }
+    .bento-card p { font-size: 15px; line-height: 1.65; color: var(--text-secondary); }
+
+    /* icon bg colors */
+    .ic-blue   { background: rgba(0,113,227,.1); }
+    .ic-green  { background: rgba(48,209,88,.1); }
+    .ic-purple { background: rgba(191,90,242,.1); }
+    .ic-orange { background: rgba(255,149,0,.1); }
+    .ic-red    { background: rgba(255,59,48,.1); }
+    .ic-teal   { background: rgba(100,210,255,.1); }
+
+    /* ── HOW IT WORKS ─────────────────────────── */
+    .how { background: var(--bg-primary); }
+    .steps {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px;
+      counter-reset: step;
+    }
+    .step { text-align: center; }
+    .step-num {
+      width: 52px; height: 52px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      font-size: 20px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 22px;
+    }
+    .step h3 { font-size: 20px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 10px; }
+    .step p { font-size: 15px; line-height: 1.65; color: var(--text-secondary); }
+    .step-connector {
+      display: flex; align-items: center; justify-content: center;
+      padding-top: 26px; color: #c7c7cc; font-size: 28px; letter-spacing: 4px;
+    }
+
+    /* ── COMPAT ───────────────────────────────── */
+    .compat { background: var(--bg-dark); color: #f5f5f7; padding: 120px 24px; }
+    .compat .section-title { color: #f5f5f7; }
+    .compat .section-sub { color: #86868b; }
+    .app-grid {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;
+      max-width: 700px; margin: 0 auto;
+    }
+    .app-chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.1);
+      color: #e5e5ea; font-size: 14px; font-weight: 500;
+      padding: 9px 18px; border-radius: 980px;
+      transition: background .2s;
+    }
+    .app-chip:hover { background: rgba(255,255,255,.12); }
+    .app-chip-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* ── REQUIREMENTS ─────────────────────────── */
+    .req { background: var(--bg-secondary); }
+    .req-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .req-card {
+      background: var(--bg-primary); border-radius: var(--radius-lg);
+      padding: 32px 28px; text-align: center;
+      border: 1px solid var(--border);
+    }
+    .req-card .icon { font-size: 36px; margin-bottom: 14px; }
+    .req-card h4 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+    .req-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
+
+    /* ── CTA ──────────────────────────────────── */
+    .cta-section {
+      background: linear-gradient(160deg, #0a2540 0%, #0d0d1a 50%, #0a1628 100%);
+      padding: 140px 24px; text-align: center; position: relative; overflow: hidden;
+    }
+    .cta-section::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 70% 60% at 50% 0%, rgba(0,113,227,.35) 0%, transparent 65%);
+      pointer-events: none;
+    }
+    .cta-section h2 {
+      font-size: clamp(36px, 6vw, 68px);
+      font-weight: 700; letter-spacing: -.04em; line-height: 1.08;
+      color: #f5f5f7; margin-bottom: 18px;
+    }
+    .cta-section p {
+      font-size: 18px; color: rgba(245,245,247,.65);
+      margin-bottom: 48px; max-width: 520px; margin-left: auto; margin-right: auto;
+    }
+    .cta-section .btn-primary { font-size: 17px; padding: 16px 36px; }
+
+    /* ── FOOTER ───────────────────────────────── */
+    footer {
+      background: #1d1d1f; color: #86868b;
+      padding: 48px 24px 36px;
+    }
+    .footer-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      flex-wrap: wrap; gap: 32px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .footer-brand { font-size: 15px; font-weight: 600; color: #f5f5f7; margin-bottom: 6px; }
+    .footer-brand-sub { font-size: 13px; color: #636366; }
+    .footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
+    .footer-links a { font-size: 13px; color: #86868b; text-decoration: none; transition: color .2s; }
+    .footer-links a:hover { color: #f5f5f7; }
+    .footer-copy {
+      max-width: 1100px; margin: 20px auto 0;
+      font-size: 12px; color: #424245;
+    }
+
+    /* ── ANIMATIONS ───────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(28px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .reveal {
+      opacity: 0; transform: translateY(32px);
+      transition: opacity .7s ease, transform .7s ease;
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    /* ── RESPONSIVE ───────────────────────────── */
+    @media (max-width: 768px) {
+      .bento { grid-template-columns: 1fr; }
+      .bento-card.wide { grid-column: span 1; }
+      .steps { grid-template-columns: 1fr; gap: 40px; }
+      .step-connector { display: none; }
+      .req-grid { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+      .footer-inner { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <a class="nav-logo" href="#">
+    <svg viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="22" height="22" rx="6" fill="#0071e3"/>
+      <rect x="4" y="7" width="5" height="4" rx="1.5" fill="white" opacity=".9"/>
+      <rect x="10.5" y="7" width="3" height="4" rx="1.5" fill="white" opacity=".9"/>
+      <rect x="15" y="7" width="3" height="4" rx="1.5" fill="white" opacity=".6"/>
+      <path d="M6.5 14 L15.5 14" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 2"/>
+      <circle cx="15.5" cy="14" r="1.5" fill="#30d158"/>
+    </svg>
+    KeysMirror
+  </a>
+  <div class="nav-links">
+    <a href="#features">功能</a>
+    <a href="#how">使用方式</a>
+    <a href="#compat">兼容性</a>
+    <a href="#download">下载</a>
+  </div>
+  <a class="nav-cta" href="https://github.com/framecy/KeysMirror/releases/latest">免费下载</a>
+</nav>
+
+<!-- ── HERO ── -->
+<section class="hero">
+  <p class="hero-eyebrow">macOS 菜单栏工具</p>
+  <h1 class="hero-title">键盘，掌控<em>一切点击</em></h1>
+  <p class="hero-sub">将任意键盘快捷键映射为目标应用窗口内的鼠标点击。游戏技能、工具栏按钮，一键直达，光标纹丝不动。</p>
+  <div class="hero-actions">
+    <a class="btn-primary" href="https://github.com/framecy/KeysMirror/releases/latest">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M4 7l4 4 4-4M2 13h12" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      下载 KeysMirror
+    </a>
+    <a class="btn-secondary" href="https://github.com/framecy/KeysMirror">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+  <p class="hero-note">macOS 13+ · 免费开源 · 无需订阅</p>
+
+  <!-- mock window -->
+  <div class="hero-window">
+    <div class="window-bar">
+      <div class="dot dot-r"></div>
+      <div class="dot dot-y"></div>
+      <div class="dot dot-g"></div>
+    </div>
+    <div class="window-body">
+      <div class="win-sidebar">
+        <div class="win-sidebar-title">已配置应用</div>
+        <div class="win-app active">
+          <div class="win-app-dot"></div>问道
+        </div>
+        <div class="win-app" style="color:#636366">
+          <div class="win-app-dot" style="background:#636366"></div>Surge
+        </div>
+        <div class="win-app" style="color:#636366">
+          <div class="win-app-dot" style="background:#636366"></div>Microsoft Edge
+        </div>
+      </div>
+      <div class="win-main">
+        <div class="win-badge">
+          <span style="width:6px;height:6px;border-radius:50%;background:#30d158;display:inline-block"></span>
+          映射已启用
+        </div>
+        <div class="win-mapping-list">
+          <div class="win-mapping">
+            <div class="win-mapping-left">
+              <div class="win-key">Q</div>
+              <span class="win-arrow">→</span>
+              <span class="win-label">技能1</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="win-coord">(1047, 85)</span>
+              <div class="win-dot-red"></div>
+            </div>
+          </div>
+          <div class="win-mapping">
+            <div class="win-mapping-left">
+              <div class="win-key">W</div>
+              <span class="win-arrow">→</span>
+              <span class="win-label">技能2</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="win-coord">(1072, 74)</span>
+              <div class="win-dot-red"></div>
+            </div>
+          </div>
+          <div class="win-mapping">
+            <div class="win-mapping-left">
+              <div class="win-key" style="font-size:11px">⌘ E</div>
+              <span class="win-arrow">→</span>
+              <span class="win-label">道具栏</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="win-coord">(1296, 983)</span>
+              <div class="win-dot-red"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section class="features" id="features">
+  <div class="container">
+    <p class="section-eyebrow reveal">核心功能</p>
+    <h2 class="section-title reveal">专为效率而生</h2>
+    <p class="section-sub reveal">每一个功能都经过深思熟虑，让映射操作无感融入你的工作流。</p>
+
+    <div class="bento">
+      <div class="bento-card wide reveal">
+        <div class="bento-icon ic-blue">⌨️</div>
+        <h3>按键映射点击</h3>
+        <p>将任意键盘按键（支持 ⌘ ⇧ ⌥ ⌃ Fn 等修饰键组合）绑定到应用窗口的指定坐标，按下即触发，响应时间小于 5ms。</p>
+      </div>
+      <div class="bento-card reveal">
+        <div class="bento-icon ic-green">🖱️</div>
+        <h3>光标纹丝不动</h3>
+        <p>模拟点击时鼠标指针完全静止，不影响正在进行的操作。</p>
+      </div>
+
+      <div class="bento-card reveal">
+        <div class="bento-icon ic-purple">🎯</div>
+        <h3>可视位置指示器</h3>
+        <p>透明覆盖层在每个映射坐标处显示红色标记，实时确认映射位置是否准确。</p>
+      </div>
+      <div class="bento-card reveal">
+        <div class="bento-icon ic-orange">📱</div>
+        <h3>iOS 游戏兼容</h3>
+        <p>完整支持通过 Apple Silicon 运行的 iPhone / iPad 游戏，iOS-on-Mac 架构无障碍。</p>
+      </div>
+      <div class="bento-card reveal">
+        <div class="bento-icon ic-teal">🗂️</div>
+        <h3>多应用独立配置</h3>
+        <p>为不同应用单独管理映射组，切换前台应用时自动激活对应配置。</p>
+      </div>
+
+      <div class="bento-card reveal">
+        <div class="bento-icon ic-red">🛡️</div>
+        <h3>隐私优先</h3>
+        <p>完全离线运行，不联网，不收集任何数据，所有配置保存在本地。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── HOW IT WORKS ── -->
+<section class="how" id="how">
+  <div class="container">
+    <p class="section-eyebrow reveal">三步上手</p>
+    <h2 class="section-title reveal">两分钟完成配置</h2>
+    <p class="section-sub reveal">录制一次，永久生效。无需脚本，无需代码，人人皆可使用。</p>
+
+    <div class="steps">
+      <div class="step reveal">
+        <div class="step-num">1</div>
+        <h3>添加目标应用</h3>
+        <p>点击菜单栏图标 → 打开配置 → 添加应用，从正在运行的应用列表中选择目标。</p>
+      </div>
+      <div class="step-connector reveal">· · ·</div>
+      <div class="step reveal">
+        <div class="step-num">2</div>
+        <h3>录制触发与位置</h3>
+        <p>点击「录制触发」按下按键，再点击「录制位置」在目标窗口中点击想要映射的坐标。</p>
+      </div>
+      <div class="step-connector reveal">· · ·</div>
+      <div class="step reveal">
+        <div class="step-num">3</div>
+        <h3>按下即触发</h3>
+        <p>切换到目标应用，按下绑定的按键，菜单栏图标短暂变绿，模拟点击已完成。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── COMPAT ── -->
+<section class="compat" id="compat">
+  <div class="container">
+    <p class="section-eyebrow reveal" style="color:#636366">广泛兼容</p>
+    <h2 class="section-title reveal">你用的应用，都能映射</h2>
+    <p class="section-sub reveal">从主流浏览器到手机游戏，KeysMirror 自动识别应用类型并选择最优投递方案。</p>
+    <div class="app-grid reveal">
+      <span class="app-chip"><span class="app-chip-dot" style="background:#0078d4"></span>Microsoft Edge</span>
+      <span class="app-chip"><span class="app-chip-dot" style="background:#4285f4"></span>Google Chrome</span>
+      <span class="app-chip"><span class="app-chip-dot" style="background:#ff6b35"></span>iOS 游戏</span>
+      <span class="app-chip"><span class="app-chip-dot" style="background:#6b6b6b"></span>终端</span>
+      <span class="app-chip"><span class="app-chip-dot" style="background:#e06c75"></span>Surge</span>
+      <span class="app-chip"><span class="app-chip-dot" style="background:#61afef"></span>VS Code</span>
+      <span class="app-chip"><span class="app-chip-dot" style="background:#30d158"></span>原生 macOS 应用</span>
+      <span class="app-chip"><span class="app-chip-dot" style="background:#bf5af2"></span>以及更多…</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── REQUIREMENTS ── -->
+<section class="req">
+  <div class="container">
+    <p class="section-eyebrow reveal">系统要求</p>
+    <h2 class="section-title reveal">轻量，开箱即用</h2>
+    <p class="section-sub reveal">无需安装驱动，无需关闭 SIP，仅需一项系统权限。</p>
+    <div class="req-grid">
+      <div class="req-card reveal">
+        <div class="icon">🍎</div>
+        <h4>macOS 13+</h4>
+        <p>Ventura 或更高版本，支持 Intel 与 Apple Silicon</p>
+      </div>
+      <div class="req-card reveal">
+        <div class="icon">♿️</div>
+        <h4>辅助功能权限</h4>
+        <p>用于监听键盘事件与模拟鼠标点击，首次启动时一键授权</p>
+      </div>
+      <div class="req-card reveal">
+        <div class="icon">💾</div>
+        <h4>极小体积</h4>
+        <p>安装包不足 1 MB，常驻内存占用极低，对系统性能零影响</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<section class="cta-section" id="download">
+  <div style="position:relative;z-index:1">
+    <h2 class="reveal">准备好了吗？</h2>
+    <p class="reveal">免费下载，立即开始将键盘变成你最强大的外设。</p>
+    <a class="btn-primary reveal" href="https://github.com/framecy/KeysMirror/releases/latest"
+       style="font-size:17px;padding:16px 36px">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M4 7l4 4 4-4M2 13h12" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      免费下载 KeysMirror
+    </a>
+    <p style="margin-top:20px;font-size:13px;color:rgba(245,245,247,.4)">
+      macOS 13 Ventura 或更高版本 · Apple Silicon 与 Intel 均支持
+    </p>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="footer-inner">
+    <div>
+      <div class="footer-brand">KeysMirror</div>
+      <div class="footer-brand-sub">让键盘掌控一切点击</div>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/framecy/KeysMirror">GitHub</a>
+      <a href="https://github.com/framecy/KeysMirror/releases">Releases</a>
+      <a href="https://github.com/framecy/KeysMirror/issues">反馈问题</a>
+      <a href="https://github.com/framecy/KeysMirror/blob/main/README.md">文档</a>
+    </div>
+  </div>
+  <div class="footer-copy">
+    Copyright © 2026 KeysMirror. MIT License. 使用 ♥ 制作于 macOS.
+  </div>
+</footer>
+
+<script>
+  // Scroll reveal
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        // stagger siblings
+        const siblings = e.target.parentElement?.querySelectorAll('.reveal');
+        if (siblings) {
+          let i = 0;
+          siblings.forEach(s => {
+            if (!s.classList.contains('visible')) {
+              s.style.transitionDelay = (i * 0.08) + 's';
+              i++;
+            }
+          });
+        }
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
