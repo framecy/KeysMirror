@@ -25,15 +25,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         permissionChecker.refreshStatus()
+        let axGranted = permissionChecker.isAccessibilityGranted
+        AppLogger.shared.log("App 启动 | 辅助功能权限: \(axGranted ? "已授权" : "未授权")")
+
         statusBarController.update(
-            permissionGranted: permissionChecker.isAccessibilityGranted,
+            permissionGranted: axGranted,
             interceptorEnabled: keyInterceptor.isEnabled
         )
-        
-        if permissionChecker.isAccessibilityGranted {
-            _ = keyInterceptor.start()
+
+        if axGranted {
+            let started = keyInterceptor.start()
+            AppLogger.shared.log("拦截器启动结果: \(started ? "成功" : "失败")")
             statusBarController.update(permissionGranted: true, interceptorEnabled: keyInterceptor.isEnabled)
         }
+
+        registerSleepWakeObservers()
+    }
+
+    // MARK: - 睡眠/唤醒处理
+
+    private func registerSleepWakeObservers() {
+        let workspace = NSWorkspace.shared.notificationCenter
+        // 屏幕唤醒（熄屏后亮屏）
+        workspace.addObserver(self, selector: #selector(handleScreenWake), name: NSWorkspace.screensDidWakeNotification, object: nil)
+        // 系统从睡眠恢复（合盖重开等）
+        workspace.addObserver(self, selector: #selector(handleScreenWake), name: NSWorkspace.didWakeNotification, object: nil)
+    }
+
+    @objc private func handleScreenWake() {
+        guard permissionChecker.isAccessibilityGranted else { return }
+        // 唤醒后事件 tap 可能已被系统销毁，重建
+        _ = keyInterceptor.start()
+        statusBarController.update(permissionGranted: true, interceptorEnabled: keyInterceptor.isEnabled)
     }
 
     private func showConfigurationWindow() {

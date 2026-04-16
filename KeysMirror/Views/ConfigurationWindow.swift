@@ -32,9 +32,11 @@ final class ConfigurationWindowController {
 struct ConfigurationWindow: View {
     @StateObject private var store = MappingStore.shared
     @StateObject private var permissionChecker = PermissionChecker.shared
+    @StateObject private var logger = AppLogger.shared
     @State private var selectedProfileID: UUID?
     @State private var showingAppPicker = false
     @State private var editingMapping: EditingMapping?
+    @State private var showLogs = false
 
     var body: some View {
         NavigationSplitView {
@@ -219,31 +221,54 @@ struct ConfigurationWindow: View {
 
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("运行日志")
-                    .font(.headline)
-                Spacer()
-                Button("清空日志") {
-                    AppLogger.shared.clear()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { showLogs.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: showLogs ? "chevron.down" : "chevron.right")
+                            .font(.caption.weight(.semibold))
+                        Text("运行日志")
+                            .font(.headline)
+                    }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.blue)
-            }
-            
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(AppLogger.shared.logs.enumerated()), id: \.offset) { _, log in
-                            Text(log)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(log.contains("[ERROR]") ? .red : (log.contains("[WARN]") ? .yellow : .secondary))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
+
+                Spacer()
+
+                if showLogs {
+                    Button("清空") {
+                        logger.clear()
                     }
-                    .padding(8)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .font(.subheadline)
                 }
-                .frame(height: 120)
-                .background(Color.black.opacity(0.05))
-                .cornerRadius(8)
+            }
+
+            if showLogs {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(logger.logs.enumerated()), id: \.offset) { index, log in
+                                Text(log)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(
+                                        log.contains("[ERROR]") ? .red :
+                                        log.contains("[WARN]")  ? .orange : .secondary
+                                    )
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .id(index)
+                            }
+                        }
+                        .padding(8)
+                    }
+                    .frame(height: 150)
+                    .background(Color.black.opacity(0.05))
+                    .cornerRadius(8)
+                    .onChange(of: logger.logs.count) { _ in
+                        proxy.scrollTo(0)
+                    }
+                }
             }
         }
     }

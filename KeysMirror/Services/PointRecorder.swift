@@ -49,13 +49,15 @@ final class PointRecorder {
         onPointCaptured = nil
     }
 
-    private func process(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    private func process(type: CGEventType, event: CGEvent?) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
-            return Unmanaged.passRetained(event)
+            return nil
         }
+
+        guard let event else { return nil }
 
         guard type == .leftMouseDown else {
             return Unmanaged.passRetained(event)
@@ -78,13 +80,14 @@ final class PointRecorder {
     }
 
     private nonisolated func handleCallback(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        let unsafeEvent = UnsafeEvent(value: event)
+        let optionalEvent: CGEvent? = (type == .tapDisabledByTimeout || type == .tapDisabledByUserInput) ? nil : event
+        let unsafeEvent = UnsafeOptionalEvent(value: optionalEvent)
         return MainActor.assumeIsolated {
             process(type: type, event: unsafeEvent.value)
         }
     }
 }
 
-private struct UnsafeEvent: @unchecked Sendable {
-    let value: CGEvent
+private struct UnsafeOptionalEvent: @unchecked Sendable {
+    let value: CGEvent?
 }

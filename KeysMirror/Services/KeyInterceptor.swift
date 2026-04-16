@@ -69,11 +69,15 @@ final class KeyInterceptor {
     }
 
     // 核心匹配逻辑：不再依赖任何 Helper，直接现场比对
-    private func processEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    private func processEvent(type: CGEventType, event: CGEvent?) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
-            return Unmanaged.passRetained(event)
+            // 系统在此类型事件中传入 null event；不能 passRetained，直接重建 tap
+            logger.log("事件 tap 被系统禁用 (type=\(type.rawValue))，尝试重建", type: "WARN")
+            _ = start()
+            return nil
         }
+
+        guard let event else { return nil }
 
         guard let frontApp = NSWorkspace.shared.frontmostApplication,
               let bundleId = frontApp.bundleIdentifier else {
@@ -143,13 +147,16 @@ final class KeyInterceptor {
     private nonisolated static let tapCallback: CGEventTapCallBack = { _, type, event, userInfo in
         guard let userInfo else { return Unmanaged.passRetained(event) }
         let interceptor = Unmanaged<KeyInterceptor>.fromOpaque(userInfo).takeUnretainedValue()
-        let unsafeEvent = UnsafeEvent(value: event)
+        // tapDisabledByTimeout / tapDisabledByUserInput 时底层 C 指针为 null，
+        // Swift 仍将其包装成非 Optional，手动转为 nil 避免使用悬空指针
+        let optionalEvent: CGEvent? = (type == .tapDisabledByTimeout || type == .tapDisabledByUserInput) ? nil : event
+        let unsafeEvent = UnsafeOptionalEvent(value: optionalEvent)
         return MainActor.assumeIsolated {
             interceptor.processEvent(type: type, event: unsafeEvent.value)
         }
     }
 }
 
-private struct UnsafeEvent: @unchecked Sendable {
-    let value: CGEvent
+private struct UnsafeOptionalEvent: @unchecked Sendable {
+    let value: CGEvent?
 }
