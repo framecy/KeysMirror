@@ -11,6 +11,11 @@ final class OverlayController: NSObject {
     private let windowLocator = WindowLocator.shared
     private var updateTimer: Timer?
 
+    // Cache: avoid redundant AX IPC + Window Server calls when nothing changed
+    private var lastFrameBundleId: String?
+    private var lastWindowFrame: CGRect?
+    private var lastProfileVersion: Int = 0
+
     private override init() {
         super.init()
         setupNotification()
@@ -27,11 +32,16 @@ final class OverlayController: NSObject {
     }
 
     @objc private func appSwitched() {
+        // Clear cache so the next tick does a fresh AX query for the new app
+        lastFrameBundleId = nil
+        lastWindowFrame = nil
         updateOverlay()
     }
 
     private func startTimer() {
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        // 0.5 Hz is plenty for a static overlay; the cache means most ticks are
+        // near-zero cost when the game window hasn't moved
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.updateOverlay()
             }
@@ -49,18 +59,40 @@ final class OverlayController: NSObject {
             return
         }
 
+        // Profile version fingerprint: skip SwiftUI update when unchanged
+        let profileVersion = profile.mappings.count &+ Int(profile.overlayOpacity * 1000)
+
+        // Skip the AX IPC call entirely when app and window frame are unchanged
+        if bundleId == lastFrameBundleId, let cachedFrame = lastWindowFrame {
+            if overlayPanel != nil && profileVersion == lastProfileVersion {
+                // Nothing changed — no AX call, no Window Server message needed
+                return
+            }
+            // Profile changed but frame is still valid — update SwiftUI view only
+            applyFrame(cachedFrame, profile: profile)
+            lastProfileVersion = profileVersion
+            return
+        }
+
         guard let frame = windowLocator.focusedWindowFrame(for: bundleId) else {
             hideOverlay()
             return
         }
 
-        // AX frame (top-left origin, Y down) → AppKit NSPanel frame (bottom-left origin, Y up)
-        let screenPoint = CoordinateConverter.axScreenPointToAppKit(frame.origin)
+        lastFrameBundleId = bundleId
+        lastWindowFrame = frame
+        lastProfileVersion = profileVersion
+
+        applyFrame(frame, profile: profile)
+    }
+
+    private func applyFrame(_ axFrame: CGRect, profile: AppProfile) {
+        let screenPoint = CoordinateConverter.axScreenPointToAppKit(axFrame.origin)
         let screenFrame = CGRect(
             x: screenPoint.x,
-            y: screenPoint.y - frame.height,
-            width: frame.width,
-            height: frame.height
+            y: screenPoint.y - axFrame.height,
+            width: axFrame.width,
+            height: axFrame.height
         )
 
         if overlayPanel == nil {
@@ -72,9 +104,9 @@ final class OverlayController: NSObject {
             if let root = overlayPanel?.contentView as? NSHostingView<OverlayView> {
                 root.rootView = OverlayView(profile: profile)
             }
+            // Only call orderFrontRegardless when the panel needs to come forward
+            overlayPanel?.orderFrontRegardless()
         }
-
-        overlayPanel?.orderFrontRegardless()
     }
 
     private func createOverlay(in frame: CGRect, profile: AppProfile) {
@@ -110,6 +142,8 @@ final class OverlayController: NSObject {
             panel.close()
             self.overlayPanel = nil
         }
+        lastFrameBundleId = nil
+        lastWindowFrame = nil
     }
 }
 
