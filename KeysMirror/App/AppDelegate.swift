@@ -49,6 +49,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshActiveProfileAvailability()
 
         registerGlobalHotkey()
+        auditLegacyMappings()
+    }
+
+    /// 启动时扫描所有 profile，对缺少缩放参考的旧映射给出明确警告。
+    /// 无参考的映射在窗口缩放后点击位置不会跟随，可能落在窗口外唤醒后台 app。
+    private func auditLegacyMappings() {
+        var legacyCount = 0
+        for profile in store.profiles {
+            let legacy = profile.mappings.filter { !$0.hasScaleReference }
+            for mapping in legacy {
+                AppLogger.shared.log("旧映射缺缩放参考: [\(profile.appName)] \(mapping.label)（\(mapping.displayShortcut)）— 编辑此映射并「重录位置」即可启用窗口缩放跟随", type: "WARN")
+                legacyCount += 1
+            }
+        }
+        if legacyCount > 0 {
+            AppLogger.shared.log("共 \(legacyCount) 条旧映射缺缩放参考，缩放跟随对其不生效", type: "WARN")
+        }
     }
 
     // MARK: - 全局开关 hotkey

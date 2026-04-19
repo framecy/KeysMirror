@@ -152,7 +152,28 @@ final class KeyInterceptor {
 
             let offset = mapping.absoluteOffset(in: windowFrame.size)
             let clickPoint = CoordinateConverter.absolutePoint(relativeX: offset.x, relativeY: offset.y, in: windowFrame)
-            logger.log("【执行动作】触发 [\(mapping.label)]: 点击 (\(Int(clickPoint.x)), \(Int(clickPoint.y)))", type: "ACTION")
+
+            // 详细动作日志：暴露缩放跟随的实际状态，便于用户自查"点击位置不准"问题
+            let winW = Int(windowFrame.width)
+            let winH = Int(windowFrame.height)
+            let relX = Int(mapping.relativeX)
+            let relY = Int(mapping.relativeY)
+            let cx = Int(clickPoint.x)
+            let cy = Int(clickPoint.y)
+            if let refW = mapping.referenceWidth, let refH = mapping.referenceHeight, refW > 0, refH > 0 {
+                let sx = windowFrame.width / refW
+                let sy = windowFrame.height / refH
+                logger.log("【执行动作】[\(mapping.label)] 偏移(\(relX),\(relY)) × \(String(format: "%.2f", sx))/\(String(format: "%.2f", sy)) | 窗口 \(winW)x\(winH) | 参考 \(Int(refW))x\(Int(refH)) → 点击 (\(cx),\(cy))", type: "ACTION")
+            } else {
+                logger.log("【执行动作】[\(mapping.label)] 偏移(\(relX),\(relY)) | 窗口 \(winW)x\(winH) | ⚠️ 无参考尺寸（v1.2 旧映射不支持缩放跟随，请编辑→重录位置） → 点击 (\(cx),\(cy))", type: "ACTION")
+            }
+
+            // 安全网：若缺参考且当前窗口已被缩小到使点击点落在窗口外，拒绝点击避免唤醒后面的 app
+            if !mapping.hasScaleReference,
+               !windowFrame.contains(clickPoint) {
+                logger.log("点击点 (\(cx),\(cy)) 落在窗口 \(winW)x\(winH) 外，已拒绝以免误触后台应用——请重录此映射启用缩放跟随", type: "WARN")
+                return mapping.blockInput ? nil : Unmanaged.passRetained(event)
+            }
             
             // 模拟点击
             clickSimulator.leftClick(at: clickPoint, targetApp: frontApp)

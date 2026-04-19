@@ -19,3 +19,6 @@ DerivedData/
 
 # Profiling & misc
 *.profraw
+
+# Local tooling
+.claude/
