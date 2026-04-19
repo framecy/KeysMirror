@@ -40,6 +40,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         registerSleepWakeObservers()
+        registerFrontAppObserver()
+        // 启动 AX observer 必须在订阅者（WindowLocator/OverlayController）已设置回调后
+        ActiveAppAXObserver.shared.bootstrap()
+        // 初始化时按当前前台 app 决定是否启用 tap
+        refreshActiveProfileAvailability()
+    }
+
+    // MARK: - 前台应用切换：智能 tap 暂停
+
+    private func registerFrontAppObserver() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleFrontAppChange(_:)),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
+        // profile 增删改也可能改变当前前台 app 的可用性
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleStoreChange),
+            name: .mappingStoreDidChange,
+            object: nil
+        )
+    }
+
+    @objc private func handleFrontAppChange(_ note: Notification) {
+        refreshActiveProfileAvailability()
+    }
+
+    @objc private func handleStoreChange() {
+        refreshActiveProfileAvailability()
+    }
+
+    private func refreshActiveProfileAvailability() {
+        let bundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let hasProfile: Bool
+        if let bundleId, bundleId != Bundle.main.bundleIdentifier {
+            hasProfile = store.enabledProfile(bundleIdentifier: bundleId) != nil
+        } else {
+            hasProfile = false
+        }
+        keyInterceptor.setActiveProfileAvailable(hasProfile)
     }
 
     // MARK: - 睡眠/唤醒处理

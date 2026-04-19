@@ -1,22 +1,23 @@
 import ApplicationServices
 import AppKit
-import QuartzCore
 
 @MainActor
 final class WindowLocator {
     static let shared = WindowLocator()
 
-    /// 焦点元素查询缓存：每个 keyDown 事件都做 AX IPC 太重，
-    /// 在 50ms 窗口内复用上次结果，覆盖快速连按场景；正常切焦点几乎不会落进同一个 50ms 窗口。
-    private struct FocusCache {
+    /// 由 ActiveAppAXObserver 推送维护的"当前前台焦点是否在文字输入控件"状态。
+    /// keyDown 命中时直接读取，不再触发 AX IPC。
+    private struct FocusState {
         let bundleId: String
-        let timestamp: CFTimeInterval
         let isTextInput: Bool
     }
-    private var focusCache: FocusCache?
-    private let focusCacheTTL: CFTimeInterval = 0.05
+    private var observedFocus: FocusState?
 
-    private init() {}
+    private init() {
+        ActiveAppAXObserver.shared.onFocusedElementChanged = { [weak self] pid in
+            self?.refreshFocusState(pid: pid)
+        }
+    }
 
     func focusedWindowFrame(for bundleIdentifier: String) -> CGRect? {
         guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
@@ -153,18 +154,25 @@ final class WindowLocator {
         return nil
     }
 
-    /// 返回 true 表示目标应用当前焦点在文字输入控件上（应暂停键盘映射）
+    /// 返回 true 表示目标应用当前焦点在文字输入控件上（应暂停键盘映射）。
+    /// 优先读取 AXObserver 维护的缓存，缓存未命中（启动竞态 / observer 注册失败）时退化为现场查询。
     func isFocusedElementTextInput(for bundleIdentifier: String) -> Bool {
-        let now = CACurrentMediaTime()
-        if let cache = focusCache,
-           cache.bundleId == bundleIdentifier,
-           now - cache.timestamp < focusCacheTTL {
-            return cache.isTextInput
+        if let state = observedFocus, state.bundleId == bundleIdentifier {
+            return state.isTextInput
         }
+        return queryFocusedTextInput(for: bundleIdentifier)
+    }
 
-        let result = queryFocusedTextInput(for: bundleIdentifier)
-        focusCache = FocusCache(bundleId: bundleIdentifier, timestamp: now, isTextInput: result)
-        return result
+    private func refreshFocusState(pid: pid_t) {
+        guard let app = NSRunningApplication(processIdentifier: pid),
+              let bundleId = app.bundleIdentifier else {
+            observedFocus = nil
+            return
+        }
+        observedFocus = FocusState(
+            bundleId: bundleId,
+            isTextInput: queryFocusedTextInput(for: bundleId)
+        )
     }
 
     private func queryFocusedTextInput(for bundleIdentifier: String) -> Bool {
@@ -192,10 +200,10 @@ final class WindowLocator {
         // 注意：不包含 AXWebArea——iOS-on-Mac 游戏的整个渲染面暴露为 AXWebArea，
         //       加入会导致游戏内所有映射失效
         let textInputRoles: Set<String> = [
-            kAXTextFieldRole as String,   // 单行文本框
-            kAXTextAreaRole as String,    // 多行文本框
-            kAXComboBoxRole as String,    // 下拉组合框
-            "AXSearchField",              // 搜索框（kAXSearchFieldRole 在部分 SDK 下不可用）
+            kAXTextFieldRole as String,
+            kAXTextAreaRole as String,
+            kAXComboBoxRole as String,
+            "AXSearchField",
         ]
         return textInputRoles.contains(role)
     }

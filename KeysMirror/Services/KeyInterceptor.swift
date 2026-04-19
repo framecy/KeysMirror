@@ -13,15 +13,24 @@ final class KeyInterceptor {
     private let clickSimulator = ClickSimulator.shared
     private let logger = AppLogger.shared
 
-    var isEnabled: Bool {
-        eventTap != nil && CGEvent.tapIsEnabled(tap: eventTap!)
-    }
+    /// 用户侧"是否开启映射"意图（来自菜单栏 toggle / start()/stop()）
+    private var userEnabled: Bool = false
+    /// 当前前台 app 是否有启用的 profile（由 AppDelegate 监听前台切换推送）
+    private var hasActiveProfile: Bool = true
+
+    /// 用户可见的启用状态：反映用户意图而非 tap 是否正在工作。
+    /// 智能暂停（hasActiveProfile=false）时菜单栏仍显示为"已启用"，避免误导。
+    var isEnabled: Bool { userEnabled }
 
     private init() {}
 
     func start() -> Bool {
-        if isEnabled { return true }
-        
+        userEnabled = true
+        if eventTap != nil {
+            applyTapState()
+            return true
+        }
+
         // 先彻底清理旧状态，避免重建时出现残留资源
         _teardown()
 
@@ -45,15 +54,30 @@ final class KeyInterceptor {
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        
+        applyTapState()
+
         logger.log("拦截器已重置并启动")
         return true
     }
 
     func stop() {
+        userEnabled = false
         _teardown()
         logger.log("拦截器已关闭")
+    }
+
+    /// AppDelegate 在前台 app 切换时调用：当前 app 无可用 profile 时，
+    /// 暂停 tap 以避免每次全局按键的进程间唤醒成本（tap 本身不销毁，避免重建开销）。
+    func setActiveProfileAvailable(_ available: Bool) {
+        guard hasActiveProfile != available else { return }
+        hasActiveProfile = available
+        applyTapState()
+    }
+
+    private func applyTapState() {
+        guard let tap = eventTap else { return }
+        let shouldEnable = userEnabled && hasActiveProfile
+        CGEvent.tapEnable(tap: tap, enable: shouldEnable)
     }
     
     /// 内部清理：先禁用 tap，再移除 RunLoop source，最后置 nil

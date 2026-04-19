@@ -1,5 +1,9 @@
 import Foundation
 
+extension Notification.Name {
+    static let mappingStoreDidChange = Notification.Name("KeysMirror.MappingStoreDidChange")
+}
+
 @MainActor
 final class MappingStore: ObservableObject {
     static let shared = MappingStore()
@@ -55,6 +59,7 @@ final class MappingStore: ObservableObject {
         } catch {
             NSLog("KeysMirror failed to save mappings: \(error.localizedDescription)")
         }
+        NotificationCenter.default.post(name: .mappingStoreDidChange, object: self)
     }
 
     func enabledProfile(bundleIdentifier: String) -> AppProfile? {

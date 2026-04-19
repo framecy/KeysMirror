@@ -18,29 +18,17 @@ final class OverlayController: NSObject {
 
     private override init() {
         super.init()
-        setupNotification()
-        startTimer()
+        // 焦点窗口位置 / 尺寸变化由 AXObserver 实时推送，无需 0.5Hz 轮询
+        ActiveAppAXObserver.shared.onFocusedWindowFrameChanged = { [weak self] _ in
+            self?.updateOverlay()
+        }
+        startSafetyTimer()
     }
 
-    private func setupNotification() {
-        NSWorkspace.shared.notificationCenter.addObserver(
-            self,
-            selector: #selector(appSwitched),
-            name: NSWorkspace.didActivateApplicationNotification,
-            object: nil
-        )
-    }
-
-    @objc private func appSwitched() {
-        // 切换前台应用：清缓存触发一次完整重算
-        lastRenderedFrame = nil
-        lastRenderedProfile = nil
-        updateOverlay()
-    }
-
-    private func startTimer() {
-        // 0.5 Hz 足够覆盖窗口移动/缩放跟随；缓存命中时几乎零成本。
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+    private func startSafetyTimer() {
+        // AXObserver 在某些应用（特别是非原生 / iOS-on-Mac 游戏）可能漏报通知，
+        // 5 秒兜底刷新一次保证 overlay 不会长期停留在过时位置。
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.updateOverlay()
             }

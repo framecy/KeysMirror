@@ -24,6 +24,7 @@
 		8D1CACBB4AB187372B5C21DB /* TriggerRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A1A5209AEE7D51C7EF49E2 /* TriggerRecorder.swift */; };
 		935D6F1684A7694F0DDE81A8 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BFAAD34EB90ECCA4FF80ABC /* StatusBarController.swift */; };
 		9746EAD9F1EA28795CAD0A74 /* CGKeyCodeNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C90066108D5AEF14AF5911D /* CGKeyCodeNames.swift */; };
+		9D59649BD806B373E144DF1A /* AXObservers.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEDA31AC89EDA801B0F471E /* AXObservers.swift */; };
 		9EA824AFCE9C15535DF925DC /* MappingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1FC13101F864E68BF2C3F74 /* MappingListView.swift */; };
 		BAAA78BB6C88DBAA6E153B19 /* ConfigurationWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B7AFB19133921625946BDBA /* ConfigurationWindow.swift */; };
 		C7D8CAC9AFA188B561C5B052 /* MappingStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247424528B3B0B8A455997F1 /* MappingStoreTests.swift */; };
@@ -73,6 +74,7 @@
 		AE2D20A5F48DD445F190EC13 /* KeyInterceptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyInterceptor.swift; sourceTree = "<group>"; };
 		B1737F8C103F87BAD46FF79B /* MappingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MappingStore.swift; sourceTree = "<group>"; };
 		B41D76167B010AD4C817C515 /* ClickSimulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickSimulator.swift; sourceTree = "<group>"; };
+		BEEDA31AC89EDA801B0F471E /* AXObservers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXObservers.swift; sourceTree = "<group>"; };
 		C7C9073A1CF605028F77C60D /* PermissionChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionChecker.swift; sourceTree = "<group>"; };
 		CED6175B47061D770C61473A /* CoordinateConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinateConverterTests.swift; sourceTree = "<group>"; };
 		D5A1A5209AEE7D51C7EF49E2 /* TriggerRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerRecorder.swift; sourceTree = "<group>"; };
@@ -168,6 +170,7 @@
 			isa = PBXGroup;
 			children = (
 				7C3032D0E1F5637E741C758C /* AppResolver.swift */,
+				BEEDA31AC89EDA801B0F471E /* AXObservers.swift */,
 				B41D76167B010AD4C817C515 /* ClickSimulator.swift */,
 				AE2D20A5F48DD445F190EC13 /* KeyInterceptor.swift */,
 				67784B299BF04C812D7B49DF /* OverlayController.swift */,
@@ -293,6 +296,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9D59649BD806B373E144DF1A /* AXObservers.swift in Sources */,
 				4582C72E4AFCB4F63E5B0C15 /* AppDelegate.swift in Sources */,
 				E2D162DEB029A467CF668136 /* AppLogger.swift in Sources */,
 				CD4E59757E9494236E520640 /* AppPickerView.swift in Sources */,
