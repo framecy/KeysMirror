@@ -125,6 +125,7 @@ final class KeyInterceptor {
         }
 
         let matchingMapping = profile.mappings.first { mapping in
+            guard mapping.isEnabled else { return false }
             switch (type, mapping.triggerType) {
             case (.keyDown, .keyboard):
                 return mapping.keyCode == keyCode && mapping.modifiers == eventModifiers && event.getIntegerValueField(.keyboardEventAutorepeat) == 0

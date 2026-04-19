@@ -39,6 +39,10 @@ struct MappingEditorView: View {
                 Text("点击“录制触发”后，按下键盘快捷键，或点击鼠标右键、侧键。")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+
+                Toggle("拦截原始按键（推荐）", isOn: $viewModel.blockInput)
+                    .toggleStyle(.switch)
+                    .help("关闭后按键会同时触发点击并传递给目标应用，适用于需要在游戏聊天框等场景同时打字的情况")
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -81,7 +85,7 @@ struct MappingEditorView: View {
             }
         }
         .padding(20)
-        .frame(width: 520, height: 360)
+        .frame(width: 520, height: 400)
         .background {
             Color(nsColor: .windowBackgroundColor)
         }
@@ -97,6 +101,7 @@ final class MappingEditorViewModel: ObservableObject {
     @Published var recordedMouseButtonNumber: Int?
     @Published var recordedPoint: CGPoint?
     @Published var recordedReferenceSize: CGSize?
+    @Published var blockInput: Bool
     @Published var isRecordingTrigger = false
     @Published var isRecordingPoint = false
     @Published var message: String?
@@ -116,6 +121,7 @@ final class MappingEditorViewModel: ObservableObject {
         self.recordedModifiers = existingMapping?.modifiers ?? 0
         self.recordedTriggerType = existingMapping?.triggerType ?? .keyboard
         self.recordedMouseButtonNumber = existingMapping?.mouseButtonNumber
+        self.blockInput = existingMapping?.blockInput ?? true
         if let existingMapping {
             self.recordedPoint = CGPoint(x: existingMapping.relativeX, y: existingMapping.relativeY)
             if let refW = existingMapping.referenceWidth, let refH = existingMapping.referenceHeight {
@@ -232,9 +238,10 @@ final class MappingEditorViewModel: ObservableObject {
             relativeX: recordedPoint.x,
             relativeY: recordedPoint.y,
             label: label.trimmingCharacters(in: .whitespacesAndNewlines),
-            blockInput: existingMapping?.blockInput ?? true,
+            blockInput: blockInput,
             referenceWidth: recordedReferenceSize?.width ?? existingMapping?.referenceWidth,
-            referenceHeight: recordedReferenceSize?.height ?? existingMapping?.referenceHeight
+            referenceHeight: recordedReferenceSize?.height ?? existingMapping?.referenceHeight,
+            isEnabled: existingMapping?.isEnabled ?? true
         )
 
         // 触发器去重检查（同 profile 内同一 trigger 不允许两条映射）

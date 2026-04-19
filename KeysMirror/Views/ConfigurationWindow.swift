@@ -213,6 +213,11 @@ struct ConfigurationWindow: View {
             },
             onDelete: { mapping in
                 store.deleteMapping(mapping, from: profile)
+            },
+            onToggleEnabled: { mapping in
+                var updated = mapping
+                updated.isEnabled.toggle()
+                store.updateMapping(updated, in: profile)
             }
         )
 

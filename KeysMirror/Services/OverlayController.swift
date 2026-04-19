@@ -134,7 +134,7 @@ struct OverlayView: View {
                     .fill(Color.clear)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                ForEach(profile.mappings) { mapping in
+                ForEach(profile.mappings.filter { $0.isEnabled }) { mapping in
                     let offset = mapping.absoluteOffset(in: geo.size)
                     MappingIndicatorView(mapping: mapping, opacity: profile.overlayOpacity)
                         .position(x: offset.x, y: offset.y)
