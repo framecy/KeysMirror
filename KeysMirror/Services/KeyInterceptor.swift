@@ -95,9 +95,14 @@ final class KeyInterceptor {
     // 核心匹配逻辑：不再依赖任何 Helper，直接现场比对
     private func processEvent(type: CGEventType, event: CGEvent?) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            // 系统在此类型事件中传入 null event；不能 passRetained，直接重建 tap
-            logger.log("事件 tap 被系统禁用 (type=\(type.rawValue))，尝试重建", type: "WARN")
-            _ = start()
+            // 系统在此类型事件中传入 null event；不能 passRetained
+            // 我们主动 disable 时（智能暂停 / stop()）系统也会送来 .tapDisabledByUserInput——
+            // 仅当用户意图开启且当前 app 有 profile 时才尝试恢复，否则忽略避免死循环
+            guard userEnabled && hasActiveProfile, let tap = eventTap else {
+                return nil
+            }
+            logger.log("事件 tap 被系统禁用 (type=\(type.rawValue))，尝试恢复", type: "WARN")
+            CGEvent.tapEnable(tap: tap, enable: true)
             return nil
         }
 
