@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Build Release
+        run: |
+          xcodebuild \
+            -project KeysMirror.xcodeproj \
+            -scheme KeysMirror \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            ENABLE_HARDENED_RUNTIME=NO \
+            build
+
+      - name: Sign (ad-hoc)
+        run: |
+          APP="build/Build/Products/Release/KeysMirror.app"
+          /usr/bin/xattr -cr "$APP"
+          /usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der "$APP"
+
+      - name: Package
+        id: pkg
+        run: |
+          APP="build/Build/Products/Release/KeysMirror.app"
+          TAG="${GITHUB_REF#refs/tags/}"
+          ZIP="KeysMirror-${TAG}.zip"
+          /usr/bin/ditto -c -k --keepParent "$APP" "$ZIP"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.pkg.outputs.tag }}"
+          ZIP="${{ steps.pkg.outputs.zip }}"
+          gh release create "$TAG" "$ZIP" \
+            --title "$TAG" \
+            --notes "Automated release for $TAG. See README for changelog." \
+            --draft

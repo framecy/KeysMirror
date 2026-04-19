@@ -59,6 +59,17 @@ The app is a single-window-controller AppKit app driven by `AppDelegate` (`KeysM
 
 Chromium browsers are quirky in the same area — if you change click delivery, sanity-check Edge/Chrome before shipping.
 
+### AXObserver-driven state (v1.4+)
+
+`ActiveAppAXObserver` (`Services/AXObservers.swift`) is a single `AXObserver` re-attached on every `NSWorkspace.didActivateApplicationNotification`. It exposes two callback hooks:
+
+- `onFocusedElementChanged` → `WindowLocator` refreshes its "is the focused element a text input?" cache. **The keyDown hot path no longer triggers AX IPC** unless the observer failed to register (then it falls back to the direct query).
+- `onFocusedWindowFrameChanged` → `OverlayController.updateOverlay()` runs immediately on `kAXWindowMovedNotification` / `kAXWindowResizedNotification`. The 5s timer is a safety net for non-native apps that drop AX notifications.
+
+Subscribers set the closures during their own `init()`; `AppDelegate.applicationDidFinishLaunching` calls `ActiveAppAXObserver.shared.bootstrap()` *after* both subscribers are constructed, so the initial app-activation event reaches them.
+
+`AppDelegate` separately listens to `didActivateApplicationNotification` for **smart tap pause**: if the new front app has no enabled profile in `MappingStore`, it calls `KeyInterceptor.setActiveProfileAvailable(false)` which `CGEvent.tapEnable(false)` the tap (no teardown). This avoids the per-keypress callback cost when the user is in a non-target app. `MappingStore.save()` posts `.mappingStoreDidChange` so adding a profile for the current foreground app re-enables the tap immediately.
+
 ### Tap-disabled and sleep/wake recovery
 
 Two recovery paths converge on `KeyInterceptor.start()`:
@@ -74,12 +85,17 @@ Two recovery paths converge on `KeyInterceptor.start()`:
 
 - `StatusBarController` owns the menu-bar icon (the green flash on hit comes from `flashActivity()`).
 - `ConfigurationWindow` + `MappingEditorView` + `AppPickerView` are SwiftUI hosted in an `NSWindowController`.
-- `OverlayController` runs a 0.5 Hz timer that draws translucent dots over each mapping's screen position. It caches `(bundleId, frame, profileVersion)` so most ticks skip the AX IPC entirely — when changing it, preserve that cache or you'll bring back the per-tick AX call that used to spike CPU.
+- `OverlayController` draws translucent dots over each enabled mapping's window-relative position. Since v1.4 it relies on `ActiveAppAXObserver.onFocusedWindowFrameChanged` for live updates and a 5s safety timer; it filters mappings by `isEnabled` so disabled rows don't render.
+- `GlobalHotkeyManager` (`Services/GlobalHotkeyManager.swift`) wraps Carbon `RegisterEventHotKey`. Default binding ⌃⇧K toggles the interceptor; rebinding goes through `AppDelegate.updateGlobalHotkey(_:)` which re-registers and persists. Persisted to a separate `preferences.json` (NOT `mappings.json`) — keep config and data files distinct.
 - `TriggerRecorder` and `PointRecorder` install their own short-lived `CGEventTap`s during recording — they share the null-event handling pattern from `KeyInterceptor`.
 
 ### Data model
 
 `AppProfile` (one per target bundle ID) → many `KeyMapping`. Persisted by `MappingStore` as JSON to Application Support. Profiles match by **case-insensitive** bundle ID (`enabledProfile`).
+
+`KeyMapping` has a custom `init(from decoder:)` that uses `decodeIfPresent` for every field — when adding a new field, follow the same pattern (default value via `?? <default>`) so old `mappings.json` files still parse. `isEnabled` defaults to `true` on missing-key decode; if you flip that default, every legacy mapping silently goes dark on upgrade.
+
+Import / export is built around `ProfileExport` (`Models/ProfileExport.swift`) — a wrapper carrying `schemaVersion`, `exportedAt`, `appVersion`, and `[AppProfile]`. `MappingStore.importProfiles(from:mode:)` accepts both the wrapper and a bare `[AppProfile]` array (back-compat).
 
 ## Permissions and entitlements
 
