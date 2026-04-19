@@ -91,9 +91,6 @@ final class KeyInterceptor {
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let eventModifiers = ModifierHelper.cleanModifiers(from: event.flags)
 
-        // TRACE 日志：确认拦截器收到了事件
-        logger.log("探测 [\(bundleId)] | 键: \(keyCode) | 模: \(eventModifiers)", type: "TRACE")
-
         guard let profile = store.enabledProfile(bundleIdentifier: bundleId) else {
             return Unmanaged.passRetained(event)
         }
@@ -123,7 +120,8 @@ final class KeyInterceptor {
                 return Unmanaged.passRetained(event)
             }
 
-            let clickPoint = CoordinateConverter.absolutePoint(relativeX: mapping.relativeX, relativeY: mapping.relativeY, in: windowFrame)
+            let offset = mapping.absoluteOffset(in: windowFrame.size)
+            let clickPoint = CoordinateConverter.absolutePoint(relativeX: offset.x, relativeY: offset.y, in: windowFrame)
             logger.log("【执行动作】触发 [\(mapping.label)]: 点击 (\(Int(clickPoint.x)), \(Int(clickPoint.y)))", type: "ACTION")
             
             // 模拟点击

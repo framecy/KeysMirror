@@ -11,10 +11,10 @@ final class OverlayController: NSObject {
     private let windowLocator = WindowLocator.shared
     private var updateTimer: Timer?
 
-    // Cache: avoid redundant AX IPC + Window Server calls when nothing changed
-    private var lastFrameBundleId: String?
-    private var lastWindowFrame: CGRect?
-    private var lastProfileVersion: Int = 0
+    // 缓存上一次实际渲染的 (frame, profile)。AX 查询本身在 0.5 Hz 下可忽略（2 次/秒），
+    // 但每次 SwiftUI 重建 + Window Server 调用并不便宜，仅在内容真的变化时才执行。
+    private var lastRenderedFrame: CGRect?
+    private var lastRenderedProfile: AppProfile?
 
     private override init() {
         super.init()
@@ -32,15 +32,14 @@ final class OverlayController: NSObject {
     }
 
     @objc private func appSwitched() {
-        // Clear cache so the next tick does a fresh AX query for the new app
-        lastFrameBundleId = nil
-        lastWindowFrame = nil
+        // 切换前台应用：清缓存触发一次完整重算
+        lastRenderedFrame = nil
+        lastRenderedProfile = nil
         updateOverlay()
     }
 
     private func startTimer() {
-        // 0.5 Hz is plenty for a static overlay; the cache means most ticks are
-        // near-zero cost when the game window hasn't moved
+        // 0.5 Hz 足够覆盖窗口移动/缩放跟随；缓存命中时几乎零成本。
         updateTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.updateOverlay()
@@ -59,30 +58,19 @@ final class OverlayController: NSObject {
             return
         }
 
-        // Profile version fingerprint: skip SwiftUI update when unchanged
-        let profileVersion = profile.mappings.count &+ Int(profile.overlayOpacity * 1000)
-
-        // Skip the AX IPC call entirely when app and window frame are unchanged
-        if bundleId == lastFrameBundleId, let cachedFrame = lastWindowFrame {
-            if overlayPanel != nil && profileVersion == lastProfileVersion {
-                // Nothing changed — no AX call, no Window Server message needed
-                return
-            }
-            // Profile changed but frame is still valid — update SwiftUI view only
-            applyFrame(cachedFrame, profile: profile)
-            lastProfileVersion = profileVersion
-            return
-        }
-
+        // 每个 tick 重新拉一次窗口 frame（AX 调用很轻），保证窗口移动/缩放后 overlay 跟随。
         guard let frame = windowLocator.focusedWindowFrame(for: bundleId) else {
             hideOverlay()
             return
         }
 
-        lastFrameBundleId = bundleId
-        lastWindowFrame = frame
-        lastProfileVersion = profileVersion
+        // 仅当 frame 或 profile 实际变化时，才走 SwiftUI 重建 / Window Server 调用。
+        if frame == lastRenderedFrame, profile == lastRenderedProfile, overlayPanel != nil {
+            return
+        }
 
+        lastRenderedFrame = frame
+        lastRenderedProfile = profile
         applyFrame(frame, profile: profile)
     }
 
@@ -104,7 +92,6 @@ final class OverlayController: NSObject {
             if let root = overlayPanel?.contentView as? NSHostingView<OverlayView> {
                 root.rootView = OverlayView(profile: profile)
             }
-            // Only call orderFrontRegardless when the panel needs to come forward
             overlayPanel?.orderFrontRegardless()
         }
     }
@@ -142,8 +129,8 @@ final class OverlayController: NSObject {
             panel.close()
             self.overlayPanel = nil
         }
-        lastFrameBundleId = nil
-        lastWindowFrame = nil
+        lastRenderedFrame = nil
+        lastRenderedProfile = nil
     }
 }
 
@@ -151,14 +138,19 @@ struct OverlayView: View {
     let profile: AppProfile
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            Rectangle()
-                .fill(Color.clear)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // GeometryReader 给到当前 panel 的实际尺寸，
+        // 配合 KeyMapping.absoluteOffset 实现窗口缩放后 overlay 红点按比例跟随。
+        GeometryReader { geo in
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            ForEach(profile.mappings) { mapping in
-                MappingIndicatorView(mapping: mapping, opacity: profile.overlayOpacity)
-                    .position(x: mapping.relativeX, y: mapping.relativeY)
+                ForEach(profile.mappings) { mapping in
+                    let offset = mapping.absoluteOffset(in: geo.size)
+                    MappingIndicatorView(mapping: mapping, opacity: profile.overlayOpacity)
+                        .position(x: offset.x, y: offset.y)
+                }
             }
         }
         .edgesIgnoringSafeArea(.all)

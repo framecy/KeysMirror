@@ -1,9 +1,20 @@
 import ApplicationServices
 import AppKit
+import QuartzCore
 
 @MainActor
 final class WindowLocator {
     static let shared = WindowLocator()
+
+    /// 焦点元素查询缓存：每个 keyDown 事件都做 AX IPC 太重，
+    /// 在 50ms 窗口内复用上次结果，覆盖快速连按场景；正常切焦点几乎不会落进同一个 50ms 窗口。
+    private struct FocusCache {
+        let bundleId: String
+        let timestamp: CFTimeInterval
+        let isTextInput: Bool
+    }
+    private var focusCache: FocusCache?
+    private let focusCacheTTL: CFTimeInterval = 0.05
 
     private init() {}
 
@@ -144,6 +155,19 @@ final class WindowLocator {
 
     /// 返回 true 表示目标应用当前焦点在文字输入控件上（应暂停键盘映射）
     func isFocusedElementTextInput(for bundleIdentifier: String) -> Bool {
+        let now = CACurrentMediaTime()
+        if let cache = focusCache,
+           cache.bundleId == bundleIdentifier,
+           now - cache.timestamp < focusCacheTTL {
+            return cache.isTextInput
+        }
+
+        let result = queryFocusedTextInput(for: bundleIdentifier)
+        focusCache = FocusCache(bundleId: bundleIdentifier, timestamp: now, isTextInput: result)
+        return result
+    }
+
+    private func queryFocusedTextInput(for bundleIdentifier: String) -> Bool {
         guard let app = NSWorkspace.shared.runningApplications
                 .first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
             return false

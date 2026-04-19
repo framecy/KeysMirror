@@ -30,8 +30,18 @@ final class MappingStore: ObservableObject {
             let data = try Data(contentsOf: fileURL)
             profiles = try decoder.decode([AppProfile].self, from: data)
         } catch {
-            NSLog("KeysMirror decode error: \(error)")
-            NSLog("KeysMirror failed to load mappings: \(error.localizedDescription)")
+            // 损坏文件不能直接被 save() 覆盖，否则用户的所有配置会永久丢失。
+            // 重命名为带时间戳的备份，便于后续手动找回，再以空配置启动。
+            let timestamp = Int(Date().timeIntervalSince1970)
+            let backupURL = fileURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("mappings.json.bak.\(timestamp)")
+            do {
+                try FileManager.default.moveItem(at: fileURL, to: backupURL)
+                NSLog("KeysMirror: mappings.json 解析失败，已备份为 \(backupURL.lastPathComponent)：\(error.localizedDescription)")
+            } catch {
+                NSLog("KeysMirror: mappings.json 解析失败且备份失败：\(error.localizedDescription)")
+            }
             profiles = []
         }
     }
@@ -88,6 +98,25 @@ final class MappingStore: ObservableObject {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
         profiles[index].mappings.removeAll { $0.id == mapping.id }
         save()
+    }
+
+    /// 同 profile 内是否已存在与 `candidate` 触发条件相同的另一条映射。
+    /// 编辑现有映射时通过 `excludingId` 排除自身。
+    func hasDuplicateTrigger(_ candidate: KeyMapping, in profile: AppProfile, excludingId: UUID? = nil) -> Bool {
+        guard let stored = profiles.first(where: { $0.id == profile.id }) else { return false }
+        return stored.mappings.contains { other in
+            if let excludingId, other.id == excludingId { return false }
+            if other.id == candidate.id { return false }
+            guard other.triggerType == candidate.triggerType else { return false }
+            switch candidate.triggerType {
+            case .keyboard:
+                return other.keyCode == candidate.keyCode && other.modifiers == candidate.modifiers
+            case .mouseRight:
+                return true
+            case .mouseOther:
+                return other.mouseButtonNumber == candidate.mouseButtonNumber
+            }
+        }
     }
 
     static func defaultFileURL() -> URL {

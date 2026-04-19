@@ -96,6 +96,7 @@ final class MappingEditorViewModel: ObservableObject {
     @Published var recordedTriggerType: TriggerType
     @Published var recordedMouseButtonNumber: Int?
     @Published var recordedPoint: CGPoint?
+    @Published var recordedReferenceSize: CGSize?
     @Published var isRecordingTrigger = false
     @Published var isRecordingPoint = false
     @Published var message: String?
@@ -117,6 +118,9 @@ final class MappingEditorViewModel: ObservableObject {
         self.recordedMouseButtonNumber = existingMapping?.mouseButtonNumber
         if let existingMapping {
             self.recordedPoint = CGPoint(x: existingMapping.relativeX, y: existingMapping.relativeY)
+            if let refW = existingMapping.referenceWidth, let refH = existingMapping.referenceHeight {
+                self.recordedReferenceSize = CGSize(width: refW, height: refH)
+            }
         }
     }
 
@@ -209,9 +213,8 @@ final class MappingEditorViewModel: ObservableObject {
             return
         }
 
-        for window in NSApp.windows {
-            window.orderOut(nil)
-        }
+        // 仅隐藏配置窗口（含其上承载的本 Sheet），其他面板/状态项不动。
+        ConfigurationWindowController.shared.hide()
         NSApp.deactivate()
         targetApp.unhide()
         activateTargetApplication(retryCount: 3)
@@ -219,7 +222,7 @@ final class MappingEditorViewModel: ObservableObject {
 
     func save() {
         guard let recordedPoint else { return }
-        
+
         let mapping = KeyMapping(
             id: existingMapping?.id ?? UUID(),
             keyCode: recordedKeyCode ?? 0,
@@ -228,8 +231,17 @@ final class MappingEditorViewModel: ObservableObject {
             mouseButtonNumber: recordedMouseButtonNumber,
             relativeX: recordedPoint.x,
             relativeY: recordedPoint.y,
-            label: label.trimmingCharacters(in: .whitespacesAndNewlines)
+            label: label.trimmingCharacters(in: .whitespacesAndNewlines),
+            blockInput: existingMapping?.blockInput ?? true,
+            referenceWidth: recordedReferenceSize?.width ?? existingMapping?.referenceWidth,
+            referenceHeight: recordedReferenceSize?.height ?? existingMapping?.referenceHeight
         )
+
+        // 触发器去重检查（同 profile 内同一 trigger 不允许两条映射）
+        if MappingStore.shared.hasDuplicateTrigger(mapping, in: profile, excludingId: existingMapping?.id) {
+            message = "已存在相同触发的映射，请更换按键或编辑已有映射。"
+            return
+        }
 
         if existingMapping == nil {
             MappingStore.shared.addMapping(mapping, to: profile)
@@ -266,6 +278,8 @@ final class MappingEditorViewModel: ObservableObject {
         }
 
         recordedPoint = relativePoint
+        // 记下录制时的窗口尺寸，后续按比例换算点击坐标，支持窗口缩放跟随
+        recordedReferenceSize = frame.size
         message = nil
         restoreConfigurationWindow()
         stopPointRecording()

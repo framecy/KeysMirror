@@ -11,9 +11,18 @@ final class AppLogger: ObservableObject {
 
     private let osLog = OSLog(subsystem: "com.keysmirror.KeysMirror", category: "app")
 
-    // 计算一次，缓存为实例变量（避免 stored-property closure 的初始化时序问题）
+    // DateFormatter 创建较贵，每次 log 都新建会成为热点；改为复用一个实例。
+    // 仅在 main actor 上调用，无并发。
+    private static let timestampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss.SSS"
+        return f
+    }()
+
     private let logFileURL: URL
     private var logFileHandle: FileHandle?
+    // 文件 I/O 串行队列，避免在主线程（含 CGEventTap 回调）阻塞。
+    private let writeQueue = DispatchQueue(label: "com.keysmirror.AppLogger.write", qos: .utility)
 
     private init() {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -22,24 +31,30 @@ final class AppLogger: ObservableObject {
         let url = dir.appendingPathComponent("keysmirror.log")
         logFileURL = url
 
-        // 每次启动截断旧内容
-        try? "".write(to: url, atomically: false, encoding: .utf8)
+        // 启动时把上一会话的日志归档为 .log.1（保留一份历史，便于排查崩溃）
+        let archive = dir.appendingPathComponent("keysmirror.log.1")
+        if FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.removeItem(at: archive)
+            try? FileManager.default.moveItem(at: url, to: archive)
+        }
+
+        FileManager.default.createFile(atPath: url.path, contents: nil)
         logFileHandle = try? FileHandle(forWritingTo: url)
     }
 
     func log(_ message: String, type: String = "INFO") {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss.SSS"
-        let timestamp = formatter.string(from: Date())
+        let timestamp = Self.timestampFormatter.string(from: Date())
         let entry = "[\(timestamp)] [\(type)] \(message)"
 
         // os_log — Console.app / log stream 可见
         os_log("%{public}@", log: osLog, type: .default, entry)
 
-        // 追加写文件 — 可 tail -f 实时查看
-        if let data = (entry + "\n").data(using: .utf8) {
-            logFileHandle?.seekToEndOfFile()
-            logFileHandle?.write(data)
+        // 异步追加写文件 — 不阻塞主线程，即便写入卡顿也不影响 event tap 回调延迟
+        if let data = (entry + "\n").data(using: .utf8), let handle = logFileHandle {
+            writeQueue.async {
+                handle.seekToEndOfFile()
+                handle.write(data)
+            }
         }
 
         // 内存缓冲供 UI
@@ -49,7 +64,10 @@ final class AppLogger: ObservableObject {
 
     func clear() {
         logs = []
-        logFileHandle?.truncateFile(atOffset: 0)
-        logFileHandle?.seek(toFileOffset: 0)
+        let handle = logFileHandle
+        writeQueue.async {
+            handle?.truncateFile(atOffset: 0)
+            handle?.seek(toFileOffset: 0)
+        }
     }
 }

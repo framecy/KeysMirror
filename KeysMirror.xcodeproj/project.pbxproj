@@ -10,6 +10,7 @@
 		038A5443A954584635744310 /* MappingIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD63521281082932F2F5957 /* MappingIndicatorView.swift */; };
 		04774DC03398EB65FAC7CCCD /* ModifierHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35819281FE10182022B6D36 /* ModifierHelper.swift */; };
 		063253E4EF0FE3A017858CF3 /* MappingEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20810993CD658291FA61DCEE /* MappingEditorView.swift */; };
+		1D246C4126026F26DADCEA20 /* KeyMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 580F62F827F69E02F9922D43 /* KeyMappingTests.swift */; };
 		23560DF378F6D26418CC5226 /* AppProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6808A28D20B47763BDCB67BB /* AppProfile.swift */; };
 		2499915C0C9D57FCD6635AED /* KeysMirrorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D42224CBCA0E169AC0DFC90 /* KeysMirrorApp.swift */; };
 		343875D677C5D454FDDD1562 /* PermissionHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F5B0BA1F849ECBDDCF7D401 /* PermissionHelper.swift */; };
@@ -56,6 +57,7 @@
 		36D1A040F3A657B277166757 /* PointRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointRecorder.swift; sourceTree = "<group>"; };
 		3C90066108D5AEF14AF5911D /* CGKeyCodeNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CGKeyCodeNames.swift; sourceTree = "<group>"; };
 		4B7AFB19133921625946BDBA /* ConfigurationWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationWindow.swift; sourceTree = "<group>"; };
+		580F62F827F69E02F9922D43 /* KeyMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyMappingTests.swift; sourceTree = "<group>"; };
 		59277160DBF7374ED36B1DD7 /* KeysMirrorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeysMirrorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		66E53974AF56C0B0CF4C7686 /* KeysMirror.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeysMirror.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		67784B299BF04C812D7B49DF /* OverlayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayController.swift; sourceTree = "<group>"; };
@@ -107,6 +109,7 @@
 			isa = PBXGroup;
 			children = (
 				CED6175B47061D770C61473A /* CoordinateConverterTests.swift */,
+				580F62F827F69E02F9922D43 /* KeyMappingTests.swift */,
 				247424528B3B0B8A455997F1 /* MappingStoreTests.swift */,
 			);
 			path = KeysMirrorTests;
@@ -281,6 +284,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E08BF3530D871B3B651440C6 /* CoordinateConverterTests.swift in Sources */,
+				1D246C4126026F26DADCEA20 /* KeyMappingTests.swift in Sources */,
 				C7D8CAC9AFA188B561C5B052 /* MappingStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
