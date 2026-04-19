@@ -337,6 +337,20 @@ struct ConfigurationWindow: View {
                 Spacer()
 
                 if showLogs {
+                    Button("导出") {
+                        exportLogs()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .font(.subheadline)
+
+                    Button("在 Finder 中显示") {
+                        NSWorkspace.shared.activateFileViewerSelecting([logger.currentLogFileURL])
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .font(.subheadline)
+
                     Button("清空") {
                         logger.clear()
                     }
@@ -387,6 +401,32 @@ struct ConfigurationWindow: View {
             selectedProfileID = store.profiles.first?.id
         }
     }
+
+    // MARK: - 日志导出
+
+    private func exportLogs() {
+        let panel = NSSavePanel()
+        panel.title = "导出 KeysMirror 日志"
+        let stamp = Self.logFilenameFormatter.string(from: Date())
+        panel.nameFieldStringValue = "KeysMirror-log-\(stamp).txt"
+        panel.allowedContentTypes = [.plainText]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try logger.exportSnapshot().write(to: url, options: .atomic)
+            importAlert = ImportAlert(title: "日志已导出", message: "已写入 \(url.lastPathComponent)")
+        } catch {
+            importAlert = ImportAlert(title: "导出失败", message: error.localizedDescription)
+        }
+    }
+
+    private static let logFilenameFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        return f
+    }()
 
     // MARK: - 导入 / 导出
 

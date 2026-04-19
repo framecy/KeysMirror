@@ -70,4 +70,16 @@ final class AppLogger: ObservableObject {
             handle?.seek(toFileOffset: 0)
         }
     }
+
+    /// 导出当前内存中的日志为 UTF-8 字符串，按时间正序（最早在前）排列，便于排查问题。
+    /// 内存缓冲是 200 行的 ring buffer；如需完整历史请直接读取 `logFileURL`。
+    func exportSnapshot() -> Data {
+        let header = "KeysMirror 日志快照\n生成时间: \(Self.timestampFormatter.string(from: Date()))\n日志文件: \(logFileURL.path)\n────────────────────────────\n"
+        // logs 内部是新→旧，导出时倒序为旧→新
+        let body = logs.reversed().joined(separator: "\n")
+        return (header + body + "\n").data(using: .utf8) ?? Data()
+    }
+
+    /// 当前持久化日志文件 URL，便于「在 Finder 中显示」操作。
+    var currentLogFileURL: URL { logFileURL }
 }
