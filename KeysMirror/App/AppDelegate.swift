@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let permissionChecker = PermissionChecker.shared
     private let keyInterceptor = KeyInterceptor.shared
     private let overlayController = OverlayController.shared
+    private let preferencesStore = PreferencesStore.shared
+    private let globalHotkey = GlobalHotkeyManager.shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusBarController.configure(
@@ -45,6 +47,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ActiveAppAXObserver.shared.bootstrap()
         // 初始化时按当前前台 app 决定是否启用 tap
         refreshActiveProfileAvailability()
+
+        registerGlobalHotkey()
+    }
+
+    // MARK: - 全局开关 hotkey
+
+    private func registerGlobalHotkey() {
+        globalHotkey.onTrigger = { [weak self] in
+            self?.toggleInterceptor()
+        }
+        if let config = preferencesStore.preferences.globalToggleHotkey {
+            _ = globalHotkey.register(config)
+        }
+    }
+
+    /// 配置 UI 修改 hotkey 后调用，重新注册并写入 preferences
+    func updateGlobalHotkey(_ config: HotkeyConfig?) {
+        preferencesStore.update { $0.globalToggleHotkey = config }
+        if let config {
+            _ = globalHotkey.register(config)
+        } else {
+            globalHotkey.unregister()
+        }
     }
 
     // MARK: - 前台应用切换：智能 tap 暂停

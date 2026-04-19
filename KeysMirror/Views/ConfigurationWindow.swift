@@ -33,11 +33,13 @@ struct ConfigurationWindow: View {
     @StateObject private var store = MappingStore.shared
     @StateObject private var permissionChecker = PermissionChecker.shared
     @StateObject private var logger = AppLogger.shared
+    @StateObject private var preferences = PreferencesStore.shared
     @State private var selectedProfileID: UUID?
     @State private var showingAppPicker = false
     @State private var editingMapping: EditingMapping?
     @State private var showLogs = false
     @State private var importAlert: ImportAlert?
+    @State private var isRecordingGlobalHotkey = false
 
     var body: some View {
         NavigationSplitView {
@@ -64,6 +66,10 @@ struct ConfigurationWindow: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
+
+                globalHotkeyRow
+                    .padding(10)
+                    .background(Color.gray.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
 
                 if store.profiles.isEmpty {
                     EmptyStateView(
@@ -135,6 +141,69 @@ struct ConfigurationWindow: View {
 
     private var selectedProfile: AppProfile? {
         store.profiles.first(where: { $0.id == selectedProfileID })
+    }
+
+    private var globalHotkeyRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("全局开关快捷键")
+                .font(.subheadline.weight(.medium))
+            HStack(spacing: 8) {
+                Text(globalHotkeyLabel)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(isRecordingGlobalHotkey ? .secondary : .primary)
+                Spacer()
+                Button(isRecordingGlobalHotkey ? "等待按键..." : "修改") {
+                    startRecordingGlobalHotkey()
+                }
+                .controlSize(.small)
+                if preferences.preferences.globalToggleHotkey != nil && !isRecordingGlobalHotkey {
+                    Button("清除") {
+                        clearGlobalHotkey()
+                    }
+                    .controlSize(.small)
+                }
+            }
+            Text("在任意应用按下此快捷键即可启用 / 禁用映射。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var globalHotkeyLabel: String {
+        if let cfg = preferences.preferences.globalToggleHotkey {
+            return CGKeyCodeNames.shortcutLabel(for: cfg.keyCode, modifiers: cfg.modifiers)
+        }
+        return "未设置"
+    }
+
+    private func startRecordingGlobalHotkey() {
+        if isRecordingGlobalHotkey {
+            TriggerRecorder.shared.stop()
+            isRecordingGlobalHotkey = false
+            return
+        }
+        isRecordingGlobalHotkey = true
+        _ = TriggerRecorder.shared.start { trigger in
+            isRecordingGlobalHotkey = false
+            guard case let .keyboard(keyCode, modifiers) = trigger else {
+                importAlert = ImportAlert(title: "仅支持键盘组合", message: "全局开关 hotkey 不支持鼠标按键，请改按键盘组合。")
+                return
+            }
+            let cfg = HotkeyConfig(keyCode: keyCode, modifiers: modifiers)
+            applyHotkeyConfig(cfg)
+        }
+    }
+
+    private func clearGlobalHotkey() {
+        applyHotkeyConfig(nil)
+    }
+
+    private func applyHotkeyConfig(_ cfg: HotkeyConfig?) {
+        if let delegate = NSApp.delegate as? AppDelegate {
+            delegate.updateGlobalHotkey(cfg)
+        } else {
+            preferences.update { $0.globalToggleHotkey = cfg }
+        }
     }
 
     private var permissionBanner: some View {
