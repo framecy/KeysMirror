@@ -192,6 +192,33 @@
       width: 10px; height: 10px; border-radius: 50%;
       background: rgba(255,59,48,.8); box-shadow: 0 0 6px rgba(255,59,48,.6);
     }
+    .win-toggle {
+      width: 26px; height: 16px; border-radius: 8px;
+      background: #30d158; position: relative; flex-shrink: 0;
+    }
+    .win-toggle::after {
+      content: ''; position: absolute; top: 2px; right: 2px;
+      width: 12px; height: 12px; border-radius: 50%; background: #fff;
+    }
+    .win-toggle.off { background: #48484a; }
+    .win-toggle.off::after { right: auto; left: 2px; }
+    .win-mapping.disabled .win-label,
+    .win-mapping.disabled .win-coord { opacity: .4; }
+    .win-mapping.disabled .win-dot-red { opacity: .25; }
+    .win-tag {
+      display: inline-block; font-size: 9px; font-weight: 600;
+      letter-spacing: .04em; padding: 2px 6px; border-radius: 4px;
+      background: rgba(48,209,88,.18); color: #30d158;
+      margin-left: 6px; vertical-align: middle;
+    }
+    .win-hotkey-strip {
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(0,113,227,.1); border-radius: 8px;
+      padding: 8px 12px; margin-top: 12px;
+      font-size: 11px; color: #ebebf5;
+    }
+    .win-hotkey-keys { display: flex; gap: 4px; }
+    .win-hotkey-keys .win-key { font-size: 10px; padding: 2px 6px; min-width: 0; }
 
     /* ── SECTIONS COMMON ─────────────────────── */
     section { padding: 120px 24px; }
@@ -529,12 +556,12 @@
     <a href="#compat">兼容性</a>
     <a href="#download">下载</a>
   </div>
-  <a class="nav-cta" href="https://github.com/framecy/KeysMirror/releases/latest">免费下载</a>
+  <a class="nav-cta" href="https://github.com/framecy/KeysMirror/releases/latest">免费下载 v1.4</a>
 </nav>
 
 <!-- ── HERO ── -->
 <section class="hero">
-  <p class="hero-eyebrow">macOS 菜单栏工具</p>
+  <p class="hero-eyebrow">macOS 菜单栏工具 · v1.4</p>
   <h1 class="hero-title">按键，<em>即点击</em></h1>
   <p class="hero-sub">将任意键盘快捷键映射为应用窗口内的指定位置点击。光标纹丝不动，无需修改目标应用，游戏技能与工具栏按钮，一键直达。</p>
   <div class="hero-actions">
@@ -577,9 +604,10 @@
         <div class="win-mapping-list">
           <div class="win-mapping">
             <div class="win-mapping-left">
+              <div class="win-toggle"></div>
               <div class="win-key">Q</div>
               <span class="win-arrow">→</span>
-              <span class="win-label">技能1</span>
+              <span class="win-label">技能1<span class="win-tag">缩放跟随</span></span>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="win-coord">(1047, 85)</span>
@@ -588,17 +616,19 @@
           </div>
           <div class="win-mapping">
             <div class="win-mapping-left">
+              <div class="win-toggle"></div>
               <div class="win-key">W</div>
               <span class="win-arrow">→</span>
-              <span class="win-label">技能2</span>
+              <span class="win-label">技能2<span class="win-tag">缩放跟随</span></span>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="win-coord">(1072, 74)</span>
               <div class="win-dot-red"></div>
             </div>
           </div>
-          <div class="win-mapping">
+          <div class="win-mapping disabled">
             <div class="win-mapping-left">
+              <div class="win-toggle off"></div>
               <div class="win-key" style="font-size:11px">⌘ E</div>
               <span class="win-arrow">→</span>
               <span class="win-label">道具栏</span>
@@ -607,6 +637,12 @@
               <span class="win-coord">(1296, 983)</span>
               <div class="win-dot-red"></div>
             </div>
+          </div>
+        </div>
+        <div class="win-hotkey-strip">
+          <span style="color:#8e8e93">全局开关快捷键</span>
+          <div class="win-hotkey-keys">
+            <span class="win-key">⌃</span><span class="win-key">⇧</span><span class="win-key">K</span>
           </div>
         </div>
       </div>
@@ -673,6 +709,30 @@
         <div class="bento-icon ic-blue">🖱️</div>
         <h3>鼠标侧键支持</h3>
         <p>除键盘按键外，鼠标右键与侧键同样可作为触发器绑定映射。</p>
+      </div>
+
+      <!-- Row 5 (v1.4): 1 + wide -->
+      <div class="bento-card reveal">
+        <div class="bento-icon ic-green">🎚️</div>
+        <h3>逐条映射开关 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.4</span></h3>
+        <p>每条映射可独立启停，调试时无需删除即可临时禁用。</p>
+      </div>
+      <div class="bento-card wide reveal">
+        <div class="bento-icon ic-orange">⌨️</div>
+        <h3>全局开关快捷键 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.4</span></h3>
+        <p>可绑定全局热键（默认 <code style="font-size:12px;background:rgba(0,0,0,.06);padding:2px 6px;border-radius:4px">⌃⇧K</code>）一键启用 / 禁用映射，无需切换菜单栏。配合智能 tap 暂停——前台应用没有可用配置时事件 tap 自动停用，零开销待机。</p>
+      </div>
+
+      <!-- Row 6 (v1.4): wide + 1 -->
+      <div class="bento-card wide reveal">
+        <div class="bento-icon ic-purple">📦</div>
+        <h3>配置导入导出 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.4</span></h3>
+        <p>一键导出 JSON 配置（带 schema 版本号）跨设备同步；导入时支持「合并（同 bundleId 覆盖）」与「全部新建」两种模式，团队共享游戏配置零摩擦。</p>
+      </div>
+      <div class="bento-card reveal">
+        <div class="bento-icon ic-teal">📐</div>
+        <h3>窗口缩放跟随 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.3+</span></h3>
+        <p>录制时记录窗口尺寸快照，窗口被等比放大 / 缩小后点击位置按比例自动换算。</p>
       </div>
     </div>
   </div>
