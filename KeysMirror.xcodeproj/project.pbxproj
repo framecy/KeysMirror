@@ -19,6 +19,7 @@
 		64751EA8D961437538287785 /* MappingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1737F8C103F87BAD46FF79B /* MappingStore.swift */; };
 		66E37D48DC11343B6FFA8616 /* AppResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3032D0E1F5637E741C758C /* AppResolver.swift */; };
 		6B0A893B16B6288969A0C013 /* ClickSimulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41D76167B010AD4C817C515 /* ClickSimulator.swift */; };
+		829FA991CCFDB6CADCA5BCC3 /* ProfileExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B37EAE8D90D74779C125BF8 /* ProfileExport.swift */; };
 		833DBA84D369E4E6FE045FB3 /* CoordinateConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2075C9B711E2683278167855 /* CoordinateConverter.swift */; };
 		85AA8B3E91B1256F31B90B58 /* PointRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36D1A040F3A657B277166757 /* PointRecorder.swift */; };
 		8D1CACBB4AB187372B5C21DB /* TriggerRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5A1A5209AEE7D51C7EF49E2 /* TriggerRecorder.swift */; };
@@ -49,6 +50,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0B37EAE8D90D74779C125BF8 /* ProfileExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileExport.swift; sourceTree = "<group>"; };
 		1833A76A39E06BC18C698FE6 /* WindowLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowLocator.swift; sourceTree = "<group>"; };
 		1B38CF155BFE4B2A42922296 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		2075C9B711E2683278167855 /* CoordinateConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinateConverter.swift; sourceTree = "<group>"; };
@@ -145,6 +147,7 @@
 				6808A28D20B47763BDCB67BB /* AppProfile.swift */,
 				35A81D065BCAA4647BCFA282 /* KeyMapping.swift */,
 				B1737F8C103F87BAD46FF79B /* MappingStore.swift */,
+				0B37EAE8D90D74779C125BF8 /* ProfileExport.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -318,6 +321,7 @@
 				CBC9ED103E620C4CBB206EE9 /* PermissionChecker.swift in Sources */,
 				343875D677C5D454FDDD1562 /* PermissionHelper.swift in Sources */,
 				85AA8B3E91B1256F31B90B58 /* PointRecorder.swift in Sources */,
+				829FA991CCFDB6CADCA5BCC3 /* ProfileExport.swift in Sources */,
 				935D6F1684A7694F0DDE81A8 /* StatusBarController.swift in Sources */,
 				8D1CACBB4AB187372B5C21DB /* TriggerRecorder.swift in Sources */,
 				C7E9604CA4D6BD9B5EA5A874 /* WindowLocator.swift in Sources */,

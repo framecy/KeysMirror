@@ -17,10 +17,13 @@ final class MappingStore: ObservableObject {
     init(fileURL: URL? = nil) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
         self.encoder = encoder
-        self.decoder = JSONDecoder()
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        self.decoder = decoder
         self.fileURL = fileURL ?? Self.defaultFileURL()
-        
+
         load() // Ensure data is loaded on init
     }
 
@@ -122,6 +125,72 @@ final class MappingStore: ObservableObject {
                 return other.mouseButtonNumber == candidate.mouseButtonNumber
             }
         }
+    }
+
+    // MARK: - 导入 / 导出
+
+    /// 导出指定 profiles（带 schema 元信息）。caller 决定是单个还是全部。
+    func exportData(for profiles: [AppProfile]) throws -> Data {
+        let payload = ProfileExport(profiles: profiles)
+        return try encoder.encode(payload)
+    }
+
+    /// 导入 JSON 数据；merge 模式下 bundleId 相同则覆盖，不同则新增；
+    /// addAsNew 模式无脑追加（profile id 重新生成避免内存中冲突）。
+    @discardableResult
+    func importProfiles(from data: Data, mode: ImportMode) throws -> Int {
+        let payload: ProfileExport
+        do {
+            payload = try decoder.decode(ProfileExport.self, from: data)
+        } catch {
+            // 兼容裸数组导出：尝试直接解码 [AppProfile]
+            do {
+                let bare = try decoder.decode([AppProfile].self, from: data)
+                payload = ProfileExport(profiles: bare)
+            } catch {
+                throw ImportError.decodeFailed(underlying: error)
+            }
+        }
+
+        guard payload.schemaVersion <= ProfileExport.currentSchemaVersion else {
+            throw ImportError.unsupportedSchema(version: payload.schemaVersion)
+        }
+
+        var imported = 0
+        for incoming in payload.profiles {
+            switch mode {
+            case .merge:
+                if let idx = profiles.firstIndex(where: { $0.bundleIdentifier.lowercased() == incoming.bundleIdentifier.lowercased() }) {
+                    // 保留原 profile id，覆盖其余字段（mappings 直接替换）
+                    var replaced = incoming
+                    replaced = AppProfile(
+                        id: profiles[idx].id,
+                        bundleIdentifier: incoming.bundleIdentifier,
+                        appName: incoming.appName,
+                        mappings: incoming.mappings,
+                        isEnabled: incoming.isEnabled,
+                        overlayOpacity: incoming.overlayOpacity,
+                        showOverlay: incoming.showOverlay
+                    )
+                    profiles[idx] = replaced
+                } else {
+                    profiles.append(incoming)
+                }
+            case .addAsNew:
+                profiles.append(AppProfile(
+                    id: UUID(),
+                    bundleIdentifier: incoming.bundleIdentifier,
+                    appName: incoming.appName,
+                    mappings: incoming.mappings,
+                    isEnabled: incoming.isEnabled,
+                    overlayOpacity: incoming.overlayOpacity,
+                    showOverlay: incoming.showOverlay
+                ))
+            }
+            imported += 1
+        }
+        save()
+        return imported
     }
 
     static func defaultFileURL() -> URL {

@@ -37,6 +37,7 @@ struct ConfigurationWindow: View {
     @State private var showingAppPicker = false
     @State private var editingMapping: EditingMapping?
     @State private var showLogs = false
+    @State private var importAlert: ImportAlert?
 
     var body: some View {
         NavigationSplitView {
@@ -45,6 +46,19 @@ struct ConfigurationWindow: View {
                     Text("应用配置")
                         .font(.title2.weight(.semibold))
                     Spacer()
+                    Menu {
+                        Button("导出全部配置...") { exportAll() }
+                            .disabled(store.profiles.isEmpty)
+                        Divider()
+                        Button("导入并合并...") { triggerImport(.merge) }
+                        Button("导入为新配置...") { triggerImport(.addAsNew) }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up.on.square")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 28)
+                    .help("导入 / 导出配置（合并 = 同 bundleId 覆盖；新建 = 全部追加）")
+
                     Button("添加应用") {
                         showingAppPicker = true
                     }
@@ -114,6 +128,9 @@ struct ConfigurationWindow: View {
                 selectedProfileID = store.profiles.first?.id
             }
         }
+        .alert(item: $importAlert) { alert in
+            Alert(title: Text(alert.title), message: Text(alert.message), dismissButton: .default(Text("好")))
+        }
     }
 
     private var selectedProfile: AppProfile? {
@@ -159,14 +176,24 @@ struct ConfigurationWindow: View {
                 ))
                 .toggleStyle(.switch)
 
-                Button(role: .destructive) {
-                    store.deleteProfile(profile)
-                    selectedProfileID = store.profiles.first?.id
-                } label: {
-                    Label("删除此配置", systemImage: "trash")
+                HStack(spacing: 8) {
+                    Button {
+                        exportProfile(profile)
+                    } label: {
+                        Label("导出", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button(role: .destructive) {
+                        store.deleteProfile(profile)
+                        selectedProfileID = store.profiles.first?.id
+                    } label: {
+                        Label("删除此配置", systemImage: "trash")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
             }
         }
 
@@ -291,6 +318,62 @@ struct ConfigurationWindow: View {
             selectedProfileID = store.profiles.first?.id
         }
     }
+
+    // MARK: - 导入 / 导出
+
+    private func exportProfile(_ profile: AppProfile) {
+        let safeName = profile.appName.replacingOccurrences(of: "/", with: "-")
+        let suggested = "KeysMirror-\(safeName).json"
+        showSavePanel(suggestedName: suggested, profiles: [profile])
+    }
+
+    private func exportAll() {
+        showSavePanel(suggestedName: "KeysMirror-AllProfiles.json", profiles: store.profiles)
+    }
+
+    private func showSavePanel(suggestedName: String, profiles: [AppProfile]) {
+        let panel = NSSavePanel()
+        panel.title = "导出 KeysMirror 配置"
+        panel.nameFieldStringValue = suggestedName
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try store.exportData(for: profiles)
+            try data.write(to: url, options: .atomic)
+            importAlert = ImportAlert(title: "导出成功", message: "已写入 \(url.lastPathComponent)（\(profiles.count) 个配置）")
+        } catch {
+            importAlert = ImportAlert(title: "导出失败", message: error.localizedDescription)
+        }
+    }
+
+    private func triggerImport(_ mode: ImportMode) {
+        let panel = NSOpenPanel()
+        panel.title = mode == .merge ? "选择要合并的 KeysMirror 配置" : "选择要导入为新配置的 KeysMirror 文件"
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            let count = try store.importProfiles(from: data, mode: mode)
+            importAlert = ImportAlert(title: "导入成功", message: "已导入 \(count) 个配置（\(mode == .merge ? "合并" : "新建")模式）")
+            if selectedProfileID == nil {
+                selectedProfileID = store.profiles.first?.id
+            }
+        } catch {
+            importAlert = ImportAlert(title: "导入失败", message: error.localizedDescription)
+        }
+    }
+}
+
+struct ImportAlert: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
 }
 
 struct EditingMapping: Identifiable {

@@ -42,6 +42,59 @@ final class MappingStoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     }
 
+    func testExportImportRoundTripMergesByBundleId() throws {
+        let dir1 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store1 = MappingStore(fileURL: dir1.appendingPathComponent("mappings.json"))
+        store1.addProfile(bundleIdentifier: "com.acme.game", appName: "Game")
+        let p1 = store1.profiles[0]
+        store1.addMapping(KeyMapping(keyCode: 12, modifiers: 0, relativeX: 10, relativeY: 20, label: "Q"), to: p1)
+
+        let exported = try store1.exportData(for: store1.profiles)
+
+        let dir2 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store2 = MappingStore(fileURL: dir2.appendingPathComponent("mappings.json"))
+        // 预先放一个不同 bundleId 的配置
+        store2.addProfile(bundleIdentifier: "com.other.app", appName: "Other")
+        // 再放一个相同 bundleId 的旧配置（应被覆盖）
+        store2.addProfile(bundleIdentifier: "com.acme.game", appName: "OldGame")
+
+        let imported = try store2.importProfiles(from: exported, mode: .merge)
+        XCTAssertEqual(imported, 1)
+        XCTAssertEqual(store2.profiles.count, 2, "merge 应覆盖同 bundleId，不应新增")
+
+        let merged = try XCTUnwrap(store2.profiles.first { $0.bundleIdentifier == "com.acme.game" })
+        XCTAssertEqual(merged.appName, "Game")
+        XCTAssertEqual(merged.mappings.first?.label, "Q")
+    }
+
+    func testImportAddAsNewAlwaysAppends() throws {
+        let dir1 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store1 = MappingStore(fileURL: dir1.appendingPathComponent("mappings.json"))
+        store1.addProfile(bundleIdentifier: "com.acme.game", appName: "Game")
+        let exported = try store1.exportData(for: store1.profiles)
+
+        let dir2 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store2 = MappingStore(fileURL: dir2.appendingPathComponent("mappings.json"))
+        store2.addProfile(bundleIdentifier: "com.acme.game", appName: "Existing")
+
+        let imported = try store2.importProfiles(from: exported, mode: .addAsNew)
+        XCTAssertEqual(imported, 1)
+        XCTAssertEqual(store2.profiles.count, 2, "addAsNew 即使 bundleId 冲突也应追加")
+    }
+
+    func testImportAcceptsBareProfileArrayForBackwardCompat() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = MappingStore(fileURL: dir.appendingPathComponent("mappings.json"))
+
+        let bare = [AppProfile(bundleIdentifier: "com.legacy.app", appName: "Legacy")]
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(bare)
+
+        let imported = try store.importProfiles(from: data, mode: .merge)
+        XCTAssertEqual(imported, 1)
+        XCTAssertEqual(store.profiles.first?.bundleIdentifier, "com.legacy.app")
+    }
+
     func testDuplicateTriggerIsDetected() {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let fileURL = directory.appendingPathComponent("mappings.json")
