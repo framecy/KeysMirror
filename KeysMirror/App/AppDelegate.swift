@@ -118,8 +118,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshActiveProfileAvailability() {
         let bundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         let hasProfile: Bool
-        if let bundleId, bundleId != Bundle.main.bundleIdentifier {
-            hasProfile = store.enabledProfile(bundleIdentifier: bundleId) != nil
+        if let bundleId, bundleId != Bundle.main.bundleIdentifier,
+           let profile = store.enabledProfile(bundleIdentifier: bundleId) {
+            // 至少有一条启用的 mapping 或 macro 才视为"有用"
+            let hasEnabledMapping = profile.mappings.contains { $0.isEnabled }
+            let hasEnabledMacro = profile.macros.contains { $0.isEnabled }
+            hasProfile = hasEnabledMapping || hasEnabledMacro
         } else {
             hasProfile = false
         }
@@ -138,7 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func handleScreenWake() {
         guard permissionChecker.isAccessibilityGranted else { return }
-        // 唤醒后事件 tap 可能已被系统销毁，重建
+        // 唤醒后事件 tap 可能已被系统销毁，重建；运行中的宏 Task 也可能被休眠扰乱，统一停掉
+        MacroRunner.shared.stop(reason: "系统唤醒")
         _ = keyInterceptor.start()
         statusBarController.update(permissionGranted: true, interceptorEnabled: keyInterceptor.isEnabled)
     }

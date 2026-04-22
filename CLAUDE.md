@@ -91,11 +91,21 @@ Two recovery paths converge on `KeyInterceptor.start()`:
 
 ### Data model
 
-`AppProfile` (one per target bundle ID) → many `KeyMapping`. Persisted by `MappingStore` as JSON to Application Support. Profiles match by **case-insensitive** bundle ID (`enabledProfile`).
+`AppProfile` (one per target bundle ID) → many `KeyMapping` **and** many `MacroAction` (v1.5+). Persisted by `MappingStore` as JSON to Application Support. Profiles match by **case-insensitive** bundle ID (`enabledProfile`).
 
-`KeyMapping` has a custom `init(from decoder:)` that uses `decodeIfPresent` for every field — when adding a new field, follow the same pattern (default value via `?? <default>`) so old `mappings.json` files still parse. `isEnabled` defaults to `true` on missing-key decode; if you flip that default, every legacy mapping silently goes dark on upgrade.
+`KeyMapping` has a custom `init(from decoder:)` that uses `decodeIfPresent` for every field — when adding a new field, follow the same pattern (default value via `?? <default>`) so old `mappings.json` files still parse. `isEnabled` defaults to `true` on missing-key decode; if you flip that default, every legacy mapping silently goes dark on upgrade. `AppProfile.macros` follows the same pattern (defaults to `[]` so v1 files decode cleanly).
 
-Import / export is built around `ProfileExport` (`Models/ProfileExport.swift`) — a wrapper carrying `schemaVersion`, `exportedAt`, `appVersion`, and `[AppProfile]`. `MappingStore.importProfiles(from:mode:)` accepts both the wrapper and a bare `[AppProfile]` array (back-compat).
+Import / export is built around `ProfileExport` (`Models/ProfileExport.swift`) — a wrapper carrying `schemaVersion` (now **2** — bumped when macros were added), `exportedAt`, `appVersion`, and `[AppProfile]`. `MappingStore.importProfiles(from:mode:)` accepts both the wrapper and a bare `[AppProfile]` array (back-compat); v1 wrapper files still load (macros becomes `[]` via decode default).
+
+### Macros (v1.5+)
+
+`MacroAction` shares triggers with `KeyMapping` — same `triggerType` / `keyCode` / `modifiers` / `mouseButtonNumber` / `blockInput` shape — but instead of one click position carries a `[MacroStep]` and a `repeatCount` (1 = once, N = N times, **0 = infinite**). Each `MacroStep` has `delaySeconds` (Double) and a `MacroStepPosition`: either `.mapping(UUID)` (referencing a `KeyMapping` in the same profile, so the macro inherits its position + scale-follow) or `.inline(x, y, refW, refH)` (own coordinates). `MacroStepPosition` uses **custom Codable with a `type` discriminator** — don't switch to Swift's default enum encoding, JSON evolution gets painful.
+
+Trigger uniqueness is enforced across the union of mappings + macros — `MappingStore.hasDuplicateTrigger(triggerType:keyCode:modifiers:mouseButtonNumber:in:excludingMappingId:excludingMacroId:)` is the single source of truth; the old `hasDuplicateTrigger(_ candidate: KeyMapping, …)` is a thin wrapper. Reuse the unified function when adding new trigger-bearing entities.
+
+**Execution: `MacroRunner` (singleton, `@MainActor`)**. `toggle(_:profile:)` is the public entry — same trigger re-pressed = stop (priority-1 path in `KeyInterceptor.processEvent`); else start, cancelling any in-flight macro. The execution `Task` uses `Task.sleep(nanoseconds:)` between steps and re-checks `Task.isCancelled` after every sleep so `stop()` (called by `task?.cancel()`) interrupts long delays immediately. `fireStep` re-queries `frontmostApplication` every iteration — if the user switched away the macro stops silently. `MacroRunner` self-subscribes to `NSWorkspace.didActivateApplicationNotification` and stops when its bundle leaves the foreground; it also posts `.macroRunStateDidChange` so `StatusBarController` can swap to the red `record.circle.fill` icon and reveal the "stop" menu item. `AppDelegate.handleScreenWake` calls `MacroRunner.shared.stop` before re-arming the tap (sleeping invalidates in-flight Tasks).
+
+`KeyInterceptor.processEvent` uses a shared `triggerMatches(...)` helper for both mappings and macros — keep them on the same matching predicate. Match priority: (1) running macro re-press → stop; (2) enabled macro hit → toggle; (3) enabled mapping hit → click. `blockInput` is honored identically for macros.
 
 ## Permissions and entitlements
 

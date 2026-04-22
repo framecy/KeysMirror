@@ -13,9 +13,22 @@ final class StatusBarController {
     private var quitHandler: (() -> Void)?
 
     private weak var toggleMenuItem: NSMenuItem?
+    private weak var stopMacroMenuItem: NSMenuItem?
     private var flashWorkItem: DispatchWorkItem?
 
-    private init() {}
+    /// 由 MacroRunner 通知驱动的宏运行状态。运行时菜单栏图标变红、菜单暴露停止项。
+    private var macroRunning: Bool = false
+    private var lastPermissionGranted: Bool = false
+    private var lastInterceptorEnabled: Bool = false
+
+    private init() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMacroRunStateChange),
+            name: .macroRunStateDidChange,
+            object: nil
+        )
+    }
 
     func configure(
         onOpenConfiguration: @escaping () -> Void,
@@ -43,6 +56,12 @@ final class StatusBarController {
         toggleItem.target = self
         menu.addItem(toggleItem)
         toggleMenuItem = toggleItem
+
+        let stopMacroItem = NSMenuItem(title: "停止运行的宏", action: #selector(stopMacro), keyEquivalent: "")
+        stopMacroItem.target = self
+        stopMacroItem.isHidden = true
+        menu.addItem(stopMacroItem)
+        stopMacroMenuItem = stopMacroItem
 
         let configurationItem = NSMenuItem(title: "打开配置", action: #selector(openConfiguration), keyEquivalent: "")
         configurationItem.target = self
@@ -77,29 +96,69 @@ final class StatusBarController {
     }
 
     func update(permissionGranted: Bool, interceptorEnabled: Bool) {
-        toggleMenuItem?.title = interceptorEnabled ? "禁用映射" : "启用映射"
+        lastPermissionGranted = permissionGranted
+        lastInterceptorEnabled = interceptorEnabled
+        refreshAppearance()
+    }
+
+    private func refreshAppearance() {
+        toggleMenuItem?.title = lastInterceptorEnabled ? "禁用映射" : "启用映射"
 
         if let button = statusItem.button {
             let symbolName: String
-            if !permissionGranted {
+            if macroRunning {
+                symbolName = "record.circle.fill"
+            } else if !lastPermissionGranted {
                 symbolName = "keyboard.badge.ellipsis"
-            } else if interceptorEnabled {
+            } else if lastInterceptorEnabled {
                 symbolName = "keyboard.badge.eye"
             } else {
                 symbolName = "keyboard"
             }
             button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "KeysMirror")
-            button.image?.isTemplate = true
+            // 运行宏时用红色显眼提示；其他时候模板色随系统
+            if macroRunning {
+                button.image?.isTemplate = false
+                button.contentTintColor = .systemRed
+            } else {
+                button.image?.isTemplate = true
+                button.contentTintColor = nil
+            }
         }
     }
 
+    @objc private func handleMacroRunStateChange() {
+        let runner = MacroRunner.shared
+        macroRunning = runner.runningMacroId != nil
+        if macroRunning, let label = runner.runningMacroLabel {
+            stopMacroMenuItem?.title = "停止运行的宏（\(label)）"
+            stopMacroMenuItem?.isHidden = false
+        } else {
+            stopMacroMenuItem?.title = "停止运行的宏"
+            stopMacroMenuItem?.isHidden = true
+        }
+        refreshAppearance()
+    }
+
+    @objc private func stopMacro() {
+        MacroRunner.shared.stop(reason: "菜单栏手动停止")
+    }
+
     func flashActivity() {
+        // 宏运行时图标已是红色，跳过绿色 flash 避免来回闪烁
+        if macroRunning { return }
         guard let button = statusItem.button else { return }
         flashWorkItem?.cancel()
         button.contentTintColor = .systemGreen
 
-        let workItem = DispatchWorkItem { [weak button] in
-            button?.contentTintColor = nil
+        let workItem = DispatchWorkItem { [weak self, weak button] in
+            guard let self else { return }
+            // 还原时如果宏正在运行，要恢复红色而非清空
+            if self.macroRunning {
+                button?.contentTintColor = .systemRed
+            } else {
+                button?.contentTintColor = nil
+            }
         }
         flashWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: workItem)

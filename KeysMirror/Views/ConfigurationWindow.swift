@@ -34,9 +34,11 @@ struct ConfigurationWindow: View {
     @StateObject private var permissionChecker = PermissionChecker.shared
     @StateObject private var logger = AppLogger.shared
     @StateObject private var preferences = PreferencesStore.shared
+    @StateObject private var macroRunner = MacroRunner.shared
     @State private var selectedProfileID: UUID?
     @State private var showingAppPicker = false
     @State private var editingMapping: EditingMapping?
+    @State private var editingMacro: EditingMacro?
     @State private var showLogs = false
     @State private var importAlert: ImportAlert?
     @State private var isRecordingGlobalHotkey = false
@@ -127,6 +129,9 @@ struct ConfigurationWindow: View {
         }
         .sheet(item: $editingMapping) { editing in
             MappingEditorView(profile: editing.profile, existingMapping: editing.mapping)
+        }
+        .sheet(item: $editingMacro) { editing in
+            MacroEditorView(profile: editing.profile, existingMacro: editing.macro)
         }
         .onAppear {
             permissionChecker.refreshStatus()
@@ -320,6 +325,41 @@ struct ConfigurationWindow: View {
         Divider()
             .padding(.vertical, 8)
 
+        HStack {
+            Text("宏 (Macros)")
+                .font(.title3.weight(.semibold))
+            Spacer()
+            Button("新建宏") {
+                editingMacro = EditingMacro(profile: profile, macro: nil)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+
+        MacroListView(
+            profile: profile,
+            runningMacroId: macroRunner.runningMacroId,
+            onEdit: { macro in
+                editingMacro = EditingMacro(profile: profile, macro: macro)
+            },
+            onDelete: { macro in
+                if macroRunner.runningMacroId == macro.id {
+                    macroRunner.stop(reason: "用户删除宏")
+                }
+                store.deleteMacro(macro, from: profile)
+            },
+            onToggleEnabled: { macro in
+                if macroRunner.runningMacroId == macro.id && macro.isEnabled {
+                    macroRunner.stop(reason: "用户禁用宏")
+                }
+                var updated = macro
+                updated.isEnabled.toggle()
+                store.updateMacro(updated, in: profile)
+            }
+        )
+
+        Divider()
+            .padding(.vertical, 8)
+
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Button {
@@ -489,6 +529,12 @@ struct EditingMapping: Identifiable {
     let id = UUID()
     let profile: AppProfile
     let mapping: KeyMapping?
+}
+
+struct EditingMacro: Identifiable {
+    let id = UUID()
+    let profile: AppProfile
+    let macro: MacroAction?
 }
 
 struct EmptyStateView: View {

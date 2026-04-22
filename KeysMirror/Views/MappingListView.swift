@@ -79,3 +79,67 @@ struct MappingListView: View {
         }
     }
 }
+
+/// 宏列表：与 MappingListView 并列在 profile 详情页里。
+/// 运行中的宏行高亮（红圆点 + 红边）；提供启停 toggle / 编辑 / 删除入口。
+struct MacroListView: View {
+    let profile: AppProfile
+    let runningMacroId: UUID?
+    let onEdit: (MacroAction) -> Void
+    let onDelete: (MacroAction) -> Void
+    let onToggleEnabled: (MacroAction) -> Void
+
+    var body: some View {
+        if profile.macros.isEmpty {
+            EmptyStateView(
+                title: "还没有宏",
+                systemImage: "list.bullet.rectangle",
+                description: "宏可以用一个触发键执行多步点击，并按秒/分延迟、循环 N 次或无限。"
+            )
+        } else {
+            List(profile.macros) { macro in
+                HStack(spacing: 12) {
+                    Toggle("", isOn: Binding(
+                        get: { macro.isEnabled },
+                        set: { _ in onToggleEnabled(macro) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .help(macro.isEnabled ? "已启用，点击禁用" : "已禁用，点击启用")
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            if runningMacroId == macro.id {
+                                Image(systemName: "record.circle.fill")
+                                    .foregroundStyle(.red)
+                                    .font(.caption)
+                            }
+                            Text(macro.label)
+                                .font(.headline)
+                        }
+                        Text(macro.displayShortcut)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Text(macro.stepSummary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Button("编辑") {
+                        onEdit(macro)
+                    }
+
+                    Button("删除", role: .destructive) {
+                        onDelete(macro)
+                    }
+                }
+                .opacity(macro.isEnabled ? 1.0 : 0.55)
+            }
+            .listStyle(.inset)
+        }
+    }
+}

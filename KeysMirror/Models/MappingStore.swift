@@ -108,22 +108,85 @@ final class MappingStore: ObservableObject {
         save()
     }
 
-    /// 同 profile 内是否已存在与 `candidate` 触发条件相同的另一条映射。
-    /// 编辑现有映射时通过 `excludingId` 排除自身。
-    func hasDuplicateTrigger(_ candidate: KeyMapping, in profile: AppProfile, excludingId: UUID? = nil) -> Bool {
+    // MARK: - Macros
+
+    func addMacro(_ macro: MacroAction, to profile: AppProfile) {
+        guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
+        profiles[index].macros.append(macro)
+        save()
+    }
+
+    func updateMacro(_ macro: MacroAction, in profile: AppProfile) {
+        guard let profileIndex = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
+        guard let macroIndex = profiles[profileIndex].macros.firstIndex(where: { $0.id == macro.id }) else { return }
+        profiles[profileIndex].macros[macroIndex] = macro
+        save()
+    }
+
+    func deleteMacro(_ macro: MacroAction, from profile: AppProfile) {
+        guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
+        profiles[index].macros.removeAll { $0.id == macro.id }
+        save()
+    }
+
+    // MARK: - Trigger conflicts
+
+    /// 跨 mappings 与 macros 检查触发器冲突。一个 trigger 只能绑定到一条记录上，
+    /// 否则 KeyInterceptor 在 dispatch 时会出现优先级歧义。
+    func hasDuplicateTrigger(
+        triggerType: TriggerType,
+        keyCode: UInt16,
+        modifiers: UInt64,
+        mouseButtonNumber: Int?,
+        in profile: AppProfile,
+        excludingMappingId: UUID? = nil,
+        excludingMacroId: UUID? = nil
+    ) -> Bool {
         guard let stored = profiles.first(where: { $0.id == profile.id }) else { return false }
-        return stored.mappings.contains { other in
-            if let excludingId, other.id == excludingId { return false }
-            if other.id == candidate.id { return false }
-            guard other.triggerType == candidate.triggerType else { return false }
-            switch candidate.triggerType {
-            case .keyboard:
-                return other.keyCode == candidate.keyCode && other.modifiers == candidate.modifiers
-            case .mouseRight:
-                return true
-            case .mouseOther:
-                return other.mouseButtonNumber == candidate.mouseButtonNumber
-            }
+
+        let mappingHit = stored.mappings.contains { other in
+            if let excludingMappingId, other.id == excludingMappingId { return false }
+            return triggersMatch(
+                lhsType: other.triggerType, lhsKey: other.keyCode, lhsMods: other.modifiers, lhsMouse: other.mouseButtonNumber,
+                rhsType: triggerType, rhsKey: keyCode, rhsMods: modifiers, rhsMouse: mouseButtonNumber
+            )
+        }
+        if mappingHit { return true }
+
+        let macroHit = stored.macros.contains { other in
+            if let excludingMacroId, other.id == excludingMacroId { return false }
+            return triggersMatch(
+                lhsType: other.triggerType, lhsKey: other.keyCode, lhsMods: other.modifiers, lhsMouse: other.mouseButtonNumber,
+                rhsType: triggerType, rhsKey: keyCode, rhsMods: modifiers, rhsMouse: mouseButtonNumber
+            )
+        }
+        return macroHit
+    }
+
+    /// 旧 KeyMapping 重载：保持 MappingEditorView 调用点不动。
+    func hasDuplicateTrigger(_ candidate: KeyMapping, in profile: AppProfile, excludingId: UUID? = nil) -> Bool {
+        return hasDuplicateTrigger(
+            triggerType: candidate.triggerType,
+            keyCode: candidate.keyCode,
+            modifiers: candidate.modifiers,
+            mouseButtonNumber: candidate.mouseButtonNumber,
+            in: profile,
+            excludingMappingId: excludingId ?? candidate.id
+        )
+    }
+
+    private func triggersMatch(
+        lhsType: TriggerType, lhsKey: UInt16, lhsMods: UInt64, lhsMouse: Int?,
+        rhsType: TriggerType, rhsKey: UInt16, rhsMods: UInt64, rhsMouse: Int?
+    ) -> Bool {
+        guard lhsType == rhsType else { return false }
+        switch lhsType {
+        case .keyboard:
+            return lhsKey == rhsKey && lhsMods == rhsMods
+        case .mouseRight:
+            return true
+        case .mouseOther:
+            return lhsMouse == rhsMouse
         }
     }
 
@@ -161,13 +224,13 @@ final class MappingStore: ObservableObject {
             switch mode {
             case .merge:
                 if let idx = profiles.firstIndex(where: { $0.bundleIdentifier.lowercased() == incoming.bundleIdentifier.lowercased() }) {
-                    // 保留原 profile id，覆盖其余字段（mappings 直接替换）
-                    var replaced = incoming
-                    replaced = AppProfile(
+                    // 保留原 profile id，覆盖其余字段（mappings / macros 直接替换）
+                    let replaced = AppProfile(
                         id: profiles[idx].id,
                         bundleIdentifier: incoming.bundleIdentifier,
                         appName: incoming.appName,
                         mappings: incoming.mappings,
+                        macros: incoming.macros,
                         isEnabled: incoming.isEnabled,
                         overlayOpacity: incoming.overlayOpacity,
                         showOverlay: incoming.showOverlay
@@ -182,6 +245,7 @@ final class MappingStore: ObservableObject {
                     bundleIdentifier: incoming.bundleIdentifier,
                     appName: incoming.appName,
                     mappings: incoming.mappings,
+                    macros: incoming.macros,
                     isEnabled: incoming.isEnabled,
                     overlayOpacity: incoming.overlayOpacity,
                     showOverlay: incoming.showOverlay
