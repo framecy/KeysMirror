@@ -556,12 +556,12 @@
     <a href="#compat">兼容性</a>
     <a href="#download">下载</a>
   </div>
-  <a class="nav-cta" href="https://github.com/framecy/KeysMirror/releases/latest">免费下载 v1.5</a>
+  <a class="nav-cta" href="https://github.com/framecy/KeysMirror/releases/latest">免费下载 v1.6</a>
 </nav>
 
 <!-- ── HERO ── -->
 <section class="hero">
-  <p class="hero-eyebrow">macOS 菜单栏工具 · v1.5 已发布</p>
+  <p class="hero-eyebrow">macOS 菜单栏工具 · v1.6 已发布</p>
   <h1 class="hero-title">按键，<em>即点击</em></h1>
   <p class="hero-sub">为不支持快捷键的应用补上键盘——把按键映射成窗口内的精准点击。光标不动，零侵入，iOS 移植游戏与原生 macOS 应用一视同仁。</p>
   <div class="hero-actions">
@@ -740,6 +740,13 @@
         <div class="bento-icon ic-orange">🎬</div>
         <h3>组合按键宏 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.5</span></h3>
         <p>一个触发键执行多步点击：每步独立设置秒 / 分延迟，可循环 N 次或无限循环；运行中再按触发键即刻停止，菜单栏图标实时变红。游戏每日任务一条龙、半挂机周期性收菜、刷新——一键搞定。步骤位置可引用现有映射或现场录制，灵活组合。</p>
+      </div>
+
+      <!-- Row 8 (v1.6): wide -->
+      <div class="bento-card wide reveal" style="grid-column: span 3;">
+        <div class="bento-icon ic-orange">⚡</div>
+        <h3>响应更快、空闲更省 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.6</span></h3>
+        <p>命中点击的热路径不再读盘、不再 AX IPC：iOS-on-Mac 判定与窗口 frame 全部按 bundleId 缓存，由系统通知精确失效。空闲时菜单栏 App 几乎不消耗 CPU，日志写入合并为 250ms 批次落盘。退出时对称清理 tap、Carbon 热键 handler 与观察者，不再残留。新增 27 条单测保护这些缓存，不影响任何使用流程。</p>
       </div>
     </div>
   </div>
