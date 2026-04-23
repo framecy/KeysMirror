@@ -1,11 +1,17 @@
 import ApplicationServices
 import AppKit
 
+extension Notification.Name {
+    /// 焦点窗口的位置 / 尺寸变化，或焦点窗口本身切换。userInfo: ["pid": pid_t]
+    /// 多订阅广播：WindowLocator 用它失效 frame 缓存；OverlayController 用它刷新位置；MacroRunner 用它失效 run-scoped 缓存。
+    static let focusedWindowFrameChanged = Notification.Name("KeysMirror.focusedWindowFrameChanged")
+}
+
 /// 跟踪前台应用的 AXObserver。集中管理对前台 app 元素的焦点、窗口移动 / 缩放通知，
 /// 替代 v1.3 之前对 AX IPC 的轮询 / 节流近似手段。
 ///
-/// 订阅者通过设置 `onFocusedElementChanged` / `onFocusedWindowFrameChanged` 闭包接收通知。
-/// 单订阅者足够（WindowLocator 与 OverlayController 各占一个），不引入数组开销。
+/// `onFocusedElementChanged` 单订阅闭包（仅 WindowLocator 用）；窗口 frame 变化走
+/// `Notification.Name.focusedWindowFrameChanged` 广播，支持任意多订阅者。
 @MainActor
 final class ActiveAppAXObserver {
     static let shared = ActiveAppAXObserver()
@@ -16,8 +22,6 @@ final class ActiveAppAXObserver {
 
     /// 焦点 UI 元素变化（焦点在 textfield / 按钮 / WebArea 之间切换）
     var onFocusedElementChanged: ((pid_t) -> Void)?
-    /// 焦点窗口的位置 / 尺寸变化，或焦点窗口本身切换
-    var onFocusedWindowFrameChanged: ((pid_t) -> Void)?
 
     private init() {
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -40,7 +44,15 @@ final class ActiveAppAXObserver {
         switchTo(pid: app.processIdentifier)
         // 应用切换：焦点元素与窗口必然变化，主动触发一次回调让订阅者刷新
         onFocusedElementChanged?(app.processIdentifier)
-        onFocusedWindowFrameChanged?(app.processIdentifier)
+        broadcastWindowFrameChanged(pid: app.processIdentifier)
+    }
+
+    private func broadcastWindowFrameChanged(pid: pid_t) {
+        NotificationCenter.default.post(
+            name: .focusedWindowFrameChanged,
+            object: self,
+            userInfo: ["pid": pid]
+        )
     }
 
     private func switchTo(pid: pid_t) {
@@ -104,10 +116,10 @@ final class ActiveAppAXObserver {
                 me.onFocusedElementChanged?(pid)
             case kAXFocusedWindowChangedNotification as String:
                 me.onFocusedElementChanged?(pid)
-                me.onFocusedWindowFrameChanged?(pid)
+                me.broadcastWindowFrameChanged(pid: pid)
             case kAXWindowMovedNotification as String,
                  kAXWindowResizedNotification as String:
-                me.onFocusedWindowFrameChanged?(pid)
+                me.broadcastWindowFrameChanged(pid: pid)
             default:
                 break
             }

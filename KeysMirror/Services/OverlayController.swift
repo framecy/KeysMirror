@@ -19,8 +19,15 @@ final class OverlayController: NSObject {
     private override init() {
         super.init()
         // 焦点窗口位置 / 尺寸变化由 AXObserver 实时推送，无需 0.5Hz 轮询
-        ActiveAppAXObserver.shared.onFocusedWindowFrameChanged = { [weak self] _ in
-            self?.updateOverlay()
+        NotificationCenter.default.addObserver(
+            forName: .focusedWindowFrameChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // notification 已在 main queue 投递，但 self 是 @MainActor，需 hop
+            Task { @MainActor in
+                self?.updateOverlay()
+            }
         }
         startSafetyTimer()
     }

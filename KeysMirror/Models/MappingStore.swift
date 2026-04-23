@@ -8,7 +8,13 @@ extension Notification.Name {
 final class MappingStore: ObservableObject {
     static let shared = MappingStore()
 
-    @Published private(set) var profiles: [AppProfile] = []
+    @Published private(set) var profiles: [AppProfile] = [] {
+        didSet { rebuildProfileIndex() }
+    }
+
+    /// `bundleIdentifier (lowercased) → AppProfile` 索引，`enabledProfile(bundleIdentifier:)` 走 O(1)。
+    /// keyDown 热路径每次按键都会查一次，n 通常 < 50 时差距可忽略；这里更多是 hygiene。
+    private var profileIndex: [String: AppProfile] = [:]
 
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -66,7 +72,17 @@ final class MappingStore: ObservableObject {
     }
 
     func enabledProfile(bundleIdentifier: String) -> AppProfile? {
-        profiles.first { $0.bundleIdentifier.lowercased() == bundleIdentifier.lowercased() && $0.isEnabled }
+        guard let profile = profileIndex[bundleIdentifier.lowercased()] else { return nil }
+        return profile.isEnabled ? profile : nil
+    }
+
+    private func rebuildProfileIndex() {
+        var index: [String: AppProfile] = [:]
+        index.reserveCapacity(profiles.count)
+        for profile in profiles {
+            index[profile.bundleIdentifier.lowercased()] = profile
+        }
+        profileIndex = index
     }
 
     func addProfile(bundleIdentifier: String, appName: String) {

@@ -13,13 +13,42 @@ final class WindowLocator {
     }
     private var observedFocus: FocusState?
 
+    /// 焦点窗口 frame 缓存。命中后零 AX IPC；窗口移动 / 缩放 / 切前台 app 时由
+    /// `.focusedWindowFrameChanged` 广播失效，同步性靠 AXObserver 推送保证。
+    private var cachedFrame: (bundleId: String, frame: CGRect)?
+
     private init() {
         ActiveAppAXObserver.shared.onFocusedElementChanged = { [weak self] pid in
             self?.refreshFocusState(pid: pid)
         }
+        NotificationCenter.default.addObserver(
+            forName: .focusedWindowFrameChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.cachedFrame = nil
+            }
+        }
     }
 
     func focusedWindowFrame(for bundleIdentifier: String) -> CGRect? {
+        if let cache = cachedFrame, cache.bundleId == bundleIdentifier {
+            return cache.frame
+        }
+        guard let frame = queryFocusedWindowFrame(for: bundleIdentifier) else {
+            return nil
+        }
+        cachedFrame = (bundleIdentifier, frame)
+        return frame
+    }
+
+    /// 测试用：手动清空 frame 缓存
+    func clearFrameCacheForTesting() {
+        cachedFrame = nil
+    }
+
+    private func queryFocusedWindowFrame(for bundleIdentifier: String) -> CGRect? {
         guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
             return nil
         }
