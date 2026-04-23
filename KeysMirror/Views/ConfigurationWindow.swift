@@ -7,7 +7,11 @@ final class ConfigurationWindowController {
     private var window: NSWindow?
 
     func show() {
-        if window == nil {
+        // NSWindow 默认 isReleasedWhenClosed=true，用户点红叉关闭后底层对象被释放，
+        // 我们的强引用会变野指针；下次 makeKeyAndOrderFront 触发 objc_msgSend 闪退。
+        // 同时防御：即使设了 false，长时间运行下若窗口被外部销毁（比如系统回收），
+        // 也通过 contentView 是否还在来判断要不要重建。
+        if window == nil || window?.contentView == nil {
             let rootView = ConfigurationWindow()
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 860, height: 560),
@@ -15,6 +19,7 @@ final class ConfigurationWindowController {
                 backing: .buffered,
                 defer: false
             )
+            window.isReleasedWhenClosed = false
             window.title = "KeysMirror 配置"
             window.center()
             window.contentView = NSHostingView(rootView: rootView)
@@ -22,6 +27,7 @@ final class ConfigurationWindowController {
         }
 
         window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func hide() {
