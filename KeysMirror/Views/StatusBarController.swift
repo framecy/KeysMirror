@@ -144,6 +144,16 @@ final class StatusBarController {
         MacroRunner.shared.stop(reason: "菜单栏手动停止")
     }
 
+    /// 取消任何挂起的 flash 还原 work item，并立即恢复图标颜色。
+    /// 退出前调用避免残留 dispatch 引用 self。
+    func cancelFlash() {
+        flashWorkItem?.cancel()
+        flashWorkItem = nil
+        if let button = statusItem.button {
+            button.contentTintColor = macroRunning ? .systemRed : nil
+        }
+    }
+
     func flashActivity() {
         // 宏运行时图标已是红色，跳过绿色 flash 避免来回闪烁
         if macroRunning { return }

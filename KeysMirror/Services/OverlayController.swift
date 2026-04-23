@@ -15,31 +15,56 @@ final class OverlayController: NSObject {
     // 但每次 SwiftUI 重建 + Window Server 调用并不便宜，仅在内容真的变化时才执行。
     private var lastRenderedFrame: CGRect?
     private var lastRenderedProfile: AppProfile?
+    /// 看门狗：上一次 AXObserver 推送时间戳；若 timer tick 发现距上次推送 > 阈值且 overlay 显示中，才强制刷新。
+    private var lastFrameUpdate: Date?
+
+    private static let safetyInterval: TimeInterval = 5.0
+    private static let safetyStaleThreshold: TimeInterval = 4.5
 
     private override init() {
         super.init()
-        // 焦点窗口位置 / 尺寸变化由 AXObserver 实时推送，无需 0.5Hz 轮询
+        // 焦点窗口位置 / 尺寸变化由 AXObserver 实时推送
         NotificationCenter.default.addObserver(
             forName: .focusedWindowFrameChanged,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            // notification 已在 main queue 投递，但 self 是 @MainActor，需 hop
             Task { @MainActor in
+                self?.lastFrameUpdate = Date()
                 self?.updateOverlay()
             }
         }
-        startSafetyTimer()
+        // 启动时不立即跑 timer：等到 overlay 真的需要展示时再启
     }
 
-    private func startSafetyTimer() {
-        // AXObserver 在某些应用（特别是非原生 / iOS-on-Mac 游戏）可能漏报通知，
-        // 5 秒兜底刷新一次保证 overlay 不会长期停留在过时位置。
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
+    /// AXObserver 在某些应用（特别是非原生 / iOS-on-Mac 游戏）可能漏报通知。
+    /// 看门狗策略：只在 overlay 当前显示中且距上次 AX 推送已超阈值时，才主动刷新。
+    /// 空闲（无 overlay 或前台无 profile）下 timer 不运行，零 AX IPC。
+    private func startSafetyTimerIfNeeded() {
+        guard updateTimer == nil else { return }
+        updateTimer = Timer.scheduledTimer(withTimeInterval: Self.safetyInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.updateOverlay()
+                self?.safetyTick()
             }
         }
+    }
+
+    private func stopSafetyTimer() {
+        updateTimer?.invalidate()
+        updateTimer = nil
+    }
+
+    private func safetyTick() {
+        // overlay 不在显示就不查 AX
+        guard overlayPanel != nil else {
+            stopSafetyTimer()
+            return
+        }
+        // AXObserver 最近推送过就不重复查
+        if let last = lastFrameUpdate, Date().timeIntervalSince(last) < Self.safetyStaleThreshold {
+            return
+        }
+        updateOverlay()
     }
 
     func updateOverlay() {
@@ -67,6 +92,8 @@ final class OverlayController: NSObject {
         lastRenderedFrame = frame
         lastRenderedProfile = profile
         applyFrame(frame, profile: profile)
+        // overlay 现在显示了，启动看门狗保兜底
+        startSafetyTimerIfNeeded()
     }
 
     private func applyFrame(_ axFrame: CGRect, profile: AppProfile) {
@@ -119,13 +146,15 @@ final class OverlayController: NSObject {
         panel.orderFrontRegardless()
     }
 
-    private func hideOverlay() {
+    func hideOverlay() {
         if let panel = overlayPanel {
             panel.close()
             self.overlayPanel = nil
         }
         lastRenderedFrame = nil
         lastRenderedProfile = nil
+        // overlay 已隐藏，停掉看门狗
+        stopSafetyTimer()
     }
 }
 

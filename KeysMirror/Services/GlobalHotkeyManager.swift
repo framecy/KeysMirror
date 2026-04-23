@@ -52,6 +52,16 @@ final class GlobalHotkeyManager {
         }
     }
 
+    /// 完整拆除：反注册热键并卸载 Carbon event handler。
+    /// 仅退出时调用——临时关闭热键功能用 `unregister()`，handler 留着复用更省。
+    func teardown() {
+        unregister()
+        if let handler = eventHandler {
+            RemoveEventHandler(handler)
+            eventHandler = nil
+        }
+    }
+
     private func installHandlerIfNeeded() {
         guard eventHandler == nil else { return }
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))

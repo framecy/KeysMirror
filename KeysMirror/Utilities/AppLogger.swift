@@ -20,9 +20,21 @@ final class AppLogger: ObservableObject {
     }()
 
     private let logFileURL: URL
-    private var logFileHandle: FileHandle?
+    /// init 后只读，writeQueue 上访问也安全。FileHandle 本身做了原子串行写。
+    private nonisolated(unsafe) var logFileHandle: FileHandle?
     // 文件 I/O 串行队列，避免在主线程（含 CGEventTap 回调）阻塞。
     private let writeQueue = DispatchQueue(label: "com.keysmirror.AppLogger.write", qos: .utility)
+
+    // 批量写盘缓冲区。INFO/TRACE/ACTION 级别累积，定时或满阈值后一次写盘；
+    // ERROR/WARN 立即触发 flush，保证崩溃前能落盘。
+    // 仅在 writeQueue 上访问 — 用 nonisolated(unsafe) 绕开 @MainActor 隔离，
+    // 由 writeQueue 串行性自身保证线程安全。
+    private nonisolated(unsafe) var pendingBuffer: [Data] = []
+    private nonisolated(unsafe) var pendingByteCount: Int = 0
+    private nonisolated(unsafe) var flushScheduled: Bool = false
+    nonisolated private static let flushInterval: DispatchTimeInterval = .milliseconds(250)
+    nonisolated private static let flushByteThreshold: Int = 16 * 1024
+    nonisolated private static let immediateFlushTypes: Set<String> = ["ERROR", "WARN"]
 
     private init() {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -49,11 +61,11 @@ final class AppLogger: ObservableObject {
         // os_log — Console.app / log stream 可见
         os_log("%{public}@", log: osLog, type: .default, entry)
 
-        // 异步追加写文件 — 不阻塞主线程，即便写入卡顿也不影响 event tap 回调延迟
-        if let data = (entry + "\n").data(using: .utf8), let handle = logFileHandle {
-            writeQueue.async {
-                handle.seekToEndOfFile()
-                handle.write(data)
+        // 文件 I/O 走 writeQueue，批量合并写盘
+        if let data = (entry + "\n").data(using: .utf8) {
+            let isImmediate = Self.immediateFlushTypes.contains(type)
+            writeQueue.async { [weak self] in
+                self?.appendPending(data: data, immediate: isImmediate)
             }
         }
 
@@ -62,12 +74,58 @@ final class AppLogger: ObservableObject {
         if logs.count > maxLogs { logs.removeLast() }
     }
 
+    /// writeQueue 内：将 entry 追加到 pending buffer，按需触发 flush。
+    /// 触发条件：(1) immediate（ERROR/WARN）；(2) 累积 ≥16KB；(3) 250ms 定时器到期。
+    private nonisolated func appendPending(data: Data, immediate: Bool) {
+        pendingBuffer.append(data)
+        pendingByteCount += data.count
+
+        if immediate || pendingByteCount >= Self.flushByteThreshold {
+            flushPending()
+            return
+        }
+
+        guard !flushScheduled else { return }
+        flushScheduled = true
+        writeQueue.asyncAfter(deadline: .now() + Self.flushInterval) { [weak self] in
+            self?.flushPending()
+        }
+    }
+
+    /// writeQueue 内：将所有 pending 写入文件句柄并清空。
+    private nonisolated func flushPending() {
+        flushScheduled = false
+        guard !pendingBuffer.isEmpty, let handle = logFileHandle else {
+            pendingBuffer.removeAll()
+            pendingByteCount = 0
+            return
+        }
+        var combined = Data()
+        combined.reserveCapacity(pendingByteCount)
+        for chunk in pendingBuffer {
+            combined.append(chunk)
+        }
+        pendingBuffer.removeAll(keepingCapacity: true)
+        pendingByteCount = 0
+        handle.seekToEndOfFile()
+        handle.write(combined)
+    }
+
     func clear() {
         logs = []
         let handle = logFileHandle
         writeQueue.async {
+            self.pendingBuffer.removeAll()
+            self.pendingByteCount = 0
             handle?.truncateFile(atOffset: 0)
             handle?.seek(toFileOffset: 0)
+        }
+    }
+
+    /// 退出前同步 flush 一次，避免最后几条 log 丢盘（applicationWillTerminate 调用）。
+    nonisolated func flushSync() {
+        writeQueue.sync {
+            self.flushPending()
         }
     }
 

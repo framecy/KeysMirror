@@ -107,12 +107,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    /// 50ms 去抖：用户在配置窗口里调一下 profile 启停同时切前台 app，会一次性触发
+    /// `didActivateApplicationNotification` + `mappingStoreDidChange`。两次都跑 refresh
+    /// 只是浪费；合并成 50ms 窗口内的一次。
+    private var refreshPending = false
+
     @objc private func handleFrontAppChange(_ note: Notification) {
-        refreshActiveProfileAvailability()
+        scheduleRefresh()
     }
 
     @objc private func handleStoreChange() {
-        refreshActiveProfileAvailability()
+        scheduleRefresh()
+    }
+
+    private func scheduleRefresh() {
+        guard !refreshPending else { return }
+        refreshPending = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            guard let self else { return }
+            self.refreshPending = false
+            self.refreshActiveProfileAvailability()
+        }
     }
 
     private func refreshActiveProfileAvailability() {
@@ -170,5 +186,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func quit() {
         keyInterceptor.stop()
         NSApp.terminate(nil)
+    }
+
+    /// 退出前对称清理：停 tap、关 overlay、停宏、撤销 carbon handler、移除观察者，
+    /// 最后 flushSync log buffer 避免 PR2.2 批量缓冲里最后几条丢盘。
+    /// 正常退出 macOS 会回收资源；这里更多是防 SIGTERM / 调试反复启停时残留 observer。
+    func applicationWillTerminate(_ notification: Notification) {
+        keyInterceptor.stop()
+        overlayController.hideOverlay()
+        MacroRunner.shared.stop(reason: "App 退出")
+        statusBarController.cancelFlash()
+        globalHotkey.teardown()
+        NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        AppLogger.shared.flushSync()
     }
 }
