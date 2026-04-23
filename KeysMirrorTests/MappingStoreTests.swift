@@ -197,6 +197,55 @@ final class MappingStoreTests: XCTestCase {
         ))
     }
 
+    // MARK: - profileIndex (PR1.6 缓存)
+
+    func testEnabledProfileIsCaseInsensitive() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = MappingStore(fileURL: dir.appendingPathComponent("mappings.json"))
+        store.addProfile(bundleIdentifier: "com.Acme.App", appName: "App")
+
+        XCTAssertNotNil(store.enabledProfile(bundleIdentifier: "com.acme.app"))
+        XCTAssertNotNil(store.enabledProfile(bundleIdentifier: "COM.ACME.APP"))
+        XCTAssertNotNil(store.enabledProfile(bundleIdentifier: "com.Acme.App"))
+    }
+
+    func testEnabledProfileReturnsNilForDisabledProfile() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = MappingStore(fileURL: dir.appendingPathComponent("mappings.json"))
+        store.addProfile(bundleIdentifier: "com.acme.app", appName: "App")
+        var p = store.profiles[0]
+        p.isEnabled = false
+        store.updateProfile(p)
+
+        XCTAssertNil(store.enabledProfile(bundleIdentifier: "com.acme.app"),
+                     "isEnabled=false 的 profile 不应被 enabledProfile 命中")
+    }
+
+    func testProfileIndexUpdatesAfterAddAndDelete() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = MappingStore(fileURL: dir.appendingPathComponent("mappings.json"))
+
+        XCTAssertNil(store.enabledProfile(bundleIdentifier: "com.acme.app"))
+        store.addProfile(bundleIdentifier: "com.acme.app", appName: "App")
+        XCTAssertNotNil(store.enabledProfile(bundleIdentifier: "com.acme.app"))
+
+        store.deleteProfile(store.profiles[0])
+        XCTAssertNil(store.enabledProfile(bundleIdentifier: "com.acme.app"),
+                     "删除 profile 后字典索引应同步移除")
+    }
+
+    func testProfileIndexUpdatesAfterUpdateProfile() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = MappingStore(fileURL: dir.appendingPathComponent("mappings.json"))
+        store.addProfile(bundleIdentifier: "com.acme.app", appName: "Old")
+        var p = store.profiles[0]
+        p.appName = "New"
+        store.updateProfile(p)
+
+        XCTAssertEqual(store.enabledProfile(bundleIdentifier: "com.acme.app")?.appName, "New",
+                       "update profile 后字典索引应反映最新值")
+    }
+
     func testExportImportPreservesMacros() throws {
         let dir1 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let store1 = MappingStore(fileURL: dir1.appendingPathComponent("mappings.json"))

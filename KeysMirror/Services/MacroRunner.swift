@@ -54,6 +54,36 @@ final class MacroRunner: ObservableObject {
         NotificationCenter.default.post(name: .macroRunStateDidChange, object: self)
     }
 
+    // MARK: - Pure helpers (testable)
+
+    /// repeatCount 语义：0 = 无限（Int.max），N>=1 = N 次，其他（理论上不该出现）保底 1。
+    static func computeStepCount(repeatCount: Int) -> Int {
+        if repeatCount == 0 { return Int.max }
+        return max(1, repeatCount)
+    }
+
+    /// 解析单步的窗口内偏移坐标。
+    /// - .mapping(id) → 在 profile.mappings 中查 id，返回该 mapping 在指定 windowSize 下的偏移；找不到返回 nil
+    /// - .inline(x,y,refW,refH) → 用临时 KeyMapping 走与映射相同的缩放算法
+    static func resolvePosition(step: MacroStep, profile: AppProfile, windowSize: CGSize) -> CGPoint? {
+        switch step.position {
+        case .mapping(let mappingId):
+            guard let referenced = profile.mappings.first(where: { $0.id == mappingId }) else {
+                return nil
+            }
+            return referenced.absoluteOffset(in: windowSize)
+        case .inline(let x, let y, let refW, let refH):
+            let temp = KeyMapping(
+                relativeX: x,
+                relativeY: y,
+                label: "",
+                referenceWidth: refW,
+                referenceHeight: refH
+            )
+            return temp.absoluteOffset(in: windowSize)
+        }
+    }
+
     // MARK: - Internal
 
     private func startInternal(_ macro: MacroAction, profile: AppProfile) {
@@ -69,7 +99,7 @@ final class MacroRunner: ObservableObject {
         runningBundleId = profile.bundleIdentifier
         NotificationCenter.default.post(name: .macroRunStateDidChange, object: self)
 
-        let totalIterations = macro.repeatCount == 0 ? Int.max : max(1, macro.repeatCount)
+        let totalIterations = Self.computeStepCount(repeatCount: macro.repeatCount)
         let captured = macro
         let bundleId = profile.bundleIdentifier
         let appName = profile.appName
@@ -140,24 +170,13 @@ final class MacroRunner: ObservableObject {
         }
 
         // 解析位置：mapping 引用走原 KeyMapping 的缩放路径；inline 直接构造一个临时 KeyMapping 走同一路径
-        let resolvedOffset: CGPoint
-        switch step.position {
-        case .mapping(let mappingId):
-            guard let profile = MappingStore.shared.profiles.first(where: { $0.bundleIdentifier.lowercased() == bundleId.lowercased() }),
-                  let referenced = profile.mappings.first(where: { $0.id == mappingId }) else {
-                logger.log("宏 [\(macro.label)] 第 \(stepIndex + 1) 步：引用的映射已删除，跳过", type: "WARN")
-                return
-            }
-            resolvedOffset = referenced.absoluteOffset(in: windowFrame.size)
-        case .inline(let x, let y, let refW, let refH):
-            let temp = KeyMapping(
-                relativeX: x,
-                relativeY: y,
-                label: "",
-                referenceWidth: refW,
-                referenceHeight: refH
-            )
-            resolvedOffset = temp.absoluteOffset(in: windowFrame.size)
+        guard let profile = MappingStore.shared.profiles.first(where: { $0.bundleIdentifier.lowercased() == bundleId.lowercased() }) else {
+            logger.log("宏 [\(macro.label)] 第 \(stepIndex + 1) 步：profile 已删除，跳过", type: "WARN")
+            return
+        }
+        guard let resolvedOffset = Self.resolvePosition(step: step, profile: profile, windowSize: windowFrame.size) else {
+            logger.log("宏 [\(macro.label)] 第 \(stepIndex + 1) 步：引用的映射已删除，跳过", type: "WARN")
+            return
         }
 
         let clickPoint = CoordinateConverter.absolutePoint(

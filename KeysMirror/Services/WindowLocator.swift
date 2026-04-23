@@ -17,6 +17,9 @@ final class WindowLocator {
     /// `.focusedWindowFrameChanged` 广播失效，同步性靠 AXObserver 推送保证。
     private var cachedFrame: (bundleId: String, frame: CGRect)?
 
+    /// 测试接缝：注入 frame 查询。生产路径走真正的 AX 调用；单测可注入桩。
+    var frameProviderForTesting: ((String) -> CGRect?)?
+
     private init() {
         ActiveAppAXObserver.shared.onFocusedElementChanged = { [weak self] pid in
             self?.refreshFocusState(pid: pid)
@@ -36,7 +39,8 @@ final class WindowLocator {
         if let cache = cachedFrame, cache.bundleId == bundleIdentifier {
             return cache.frame
         }
-        guard let frame = queryFocusedWindowFrame(for: bundleIdentifier) else {
+        let query = frameProviderForTesting ?? { [weak self] bid in self?.queryFocusedWindowFrame(for: bid) }
+        guard let frame = query(bundleIdentifier) else {
             return nil
         }
         cachedFrame = (bundleIdentifier, frame)

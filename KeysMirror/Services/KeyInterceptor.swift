@@ -134,7 +134,7 @@ final class KeyInterceptor {
         // 宏匹配优先：先看是否正好是当前运行宏的触发键（→ 停），再看 profile.macros 是否命中（→ 启动）
         if let runningId = MacroRunner.shared.runningMacroId,
            let runningMacro = profile.macros.first(where: { $0.id == runningId }),
-           triggerMatches(event: event, type: type, keyCode: keyCode, eventModifiers: eventModifiers, buttonNumber: buttonNumber,
+           Self.triggerMatches(event: event, type: type, keyCode: keyCode, eventModifiers: eventModifiers, buttonNumber: buttonNumber,
                           triggerType: runningMacro.triggerType, mappingKeyCode: runningMacro.keyCode,
                           mappingModifiers: runningMacro.modifiers, mappingButton: runningMacro.mouseButtonNumber) {
             MacroRunner.shared.stop(reason: "用户再按触发键")
@@ -143,7 +143,7 @@ final class KeyInterceptor {
         }
 
         if let macro = profile.macros.first(where: { macro in
-            macro.isEnabled && triggerMatches(
+            macro.isEnabled && Self.triggerMatches(
                 event: event, type: type, keyCode: keyCode, eventModifiers: eventModifiers, buttonNumber: buttonNumber,
                 triggerType: macro.triggerType, mappingKeyCode: macro.keyCode,
                 mappingModifiers: macro.modifiers, mappingButton: macro.mouseButtonNumber
@@ -155,7 +155,7 @@ final class KeyInterceptor {
 
         let matchingMapping = profile.mappings.first { mapping in
             guard mapping.isEnabled else { return false }
-            return triggerMatches(
+            return Self.triggerMatches(
                 event: event, type: type, keyCode: keyCode, eventModifiers: eventModifiers, buttonNumber: buttonNumber,
                 triggerType: mapping.triggerType, mappingKeyCode: mapping.keyCode,
                 mappingModifiers: mapping.modifiers, mappingButton: mapping.mouseButtonNumber
@@ -212,7 +212,8 @@ final class KeyInterceptor {
     }
 
     /// 统一的触发匹配：mappings 与 macros 共用同一份 (event, type) ↔ (triggerType, ...) 比对逻辑。
-    private func triggerMatches(
+    /// 静态便于单测注入 fixture CGEvent。
+    static func triggerMatches(
         event: CGEvent,
         type: CGEventType,
         keyCode: UInt16,
