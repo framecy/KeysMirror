@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>KeysMirror — 按键，即点击</title>
-  <meta name="description" content="将任意键盘快捷键映射为应用窗口内的精准点击。光标纹丝不动，支持游戏与所有 macOS 应用。" />
+  <title>KeysMirror — Press a key. Place a click.</title>
+  <meta name="description" content="Map any keyboard shortcut to a precise click inside any app's window — without ever moving the cursor. Native macOS apps and iOS-on-Mac games, equally well." />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -31,6 +31,9 @@
       -webkit-font-smoothing: antialiased;
       overflow-x: hidden;
     }
+    html[lang="zh-CN"] body {
+      font-family: -apple-system, "SF Pro SC", "PingFang SC", "Helvetica Neue", "Microsoft YaHei", Arial, sans-serif;
+    }
 
     /* ── NAV ──────────────────────────────────── */
     nav {
@@ -55,6 +58,18 @@
       text-decoration: none; transition: color .2s;
     }
     .nav-links a:hover { color: var(--text-primary); }
+    .nav-right { display: flex; align-items: center; gap: 10px; }
+    .nav-lang {
+      font-size: 12px; font-weight: 600;
+      color: var(--text-secondary);
+      background: rgba(0,0,0,.05);
+      padding: 5px 11px; border-radius: 980px;
+      cursor: pointer; border: none;
+      transition: background .2s, color .2s;
+      font-family: inherit;
+      letter-spacing: .02em;
+    }
+    .nav-lang:hover { background: rgba(0,0,0,.09); color: var(--text-primary); }
     .nav-cta {
       font-size: 13px; font-weight: 500;
       color: var(--accent); text-decoration: none;
@@ -99,7 +114,7 @@
       font-size: clamp(17px, 2.2vw, 21px);
       font-weight: 400; line-height: 1.6;
       color: var(--text-secondary);
-      max-width: 560px;
+      max-width: 600px;
       margin-bottom: 44px;
       opacity: 0; animation: fadeUp .7s .3s ease forwards;
     }
@@ -235,7 +250,7 @@
     }
     .section-sub {
       font-size: 18px; line-height: 1.6; color: var(--text-secondary);
-      text-align: center; max-width: 540px; margin: 0 auto 64px;
+      text-align: center; max-width: 580px; margin: 0 auto 64px;
     }
     .container { max-width: 1100px; margin: 0 auto; }
 
@@ -551,30 +566,33 @@
     KeysMirror
   </a>
   <div class="nav-links">
-    <a href="#features">功能</a>
-    <a href="#how">使用方式</a>
-    <a href="#compat">兼容性</a>
-    <a href="#download">下载</a>
+    <a href="#features" data-i18n="nav.features">Features</a>
+    <a href="#how" data-i18n="nav.how">How it works</a>
+    <a href="#compat" data-i18n="nav.compat">Compatibility</a>
+    <a href="#download" data-i18n="nav.download">Download</a>
   </div>
-  <a class="nav-cta" href="https://github.com/framecy/KeysMirror/releases/latest">免费下载 v1.6</a>
+  <div class="nav-right">
+    <button id="lang-toggle" class="nav-lang" type="button" aria-label="Switch language">中</button>
+    <a class="nav-cta" href="https://github.com/framecy/KeysMirror/releases/latest" data-i18n="nav.cta">Free Download · v1.6</a>
+  </div>
 </nav>
 
 <!-- ── HERO ── -->
 <section class="hero">
-  <p class="hero-eyebrow">macOS 菜单栏工具 · v1.6 已发布</p>
-  <h1 class="hero-title">按键，<em>即点击</em></h1>
-  <p class="hero-sub">为不支持快捷键的应用补上键盘——把按键映射成窗口内的精准点击。光标不动，零侵入，iOS 移植游戏与原生 macOS 应用一视同仁。</p>
+  <p class="hero-eyebrow" data-i18n="hero.eyebrow">macOS Menu Bar Utility · v1.6 Available</p>
+  <h1 class="hero-title" data-i18n-html="hero.title">Press a key. <em>Place a click.</em></h1>
+  <p class="hero-sub" data-i18n="hero.sub">Map any keyboard shortcut to a precise click inside an app's window. The cursor never moves. Native macOS apps and iOS-on-Mac games — both, equally well.</p>
   <div class="hero-actions">
     <a class="btn-primary" href="https://github.com/framecy/KeysMirror/releases/latest">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M4 7l4 4 4-4M2 13h12" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      下载 KeysMirror
+      <span data-i18n="hero.btn.download">Download KeysMirror</span>
     </a>
     <a class="btn-secondary" href="https://github.com/framecy/KeysMirror">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-      GitHub
+      <span data-i18n="hero.btn.github">GitHub</span>
     </a>
   </div>
-  <p class="hero-note">macOS 13+ · 免费开源 · 无需订阅</p>
+  <p class="hero-note" data-i18n="hero.note">macOS 13+ · Free & open source · No subscription</p>
 
   <!-- mock window -->
   <div class="hero-window">
@@ -585,9 +603,9 @@
     </div>
     <div class="window-body">
       <div class="win-sidebar">
-        <div class="win-sidebar-title">已配置应用</div>
+        <div class="win-sidebar-title" data-i18n="mock.sidebar.title">Configured Apps</div>
         <div class="win-app active">
-          <div class="win-app-dot"></div>问道
+          <div class="win-app-dot"></div><span data-i18n="mock.app.game">Wandao Online</span>
         </div>
         <div class="win-app" style="color:#636366">
           <div class="win-app-dot" style="background:#636366"></div>Surge
@@ -599,7 +617,7 @@
       <div class="win-main">
         <div class="win-badge">
           <span style="width:6px;height:6px;border-radius:50%;background:#30d158;display:inline-block"></span>
-          映射已启用
+          <span data-i18n="mock.badge">Mappings active</span>
         </div>
         <div class="win-mapping-list">
           <div class="win-mapping">
@@ -607,7 +625,7 @@
               <div class="win-toggle"></div>
               <div class="win-key">Q</div>
               <span class="win-arrow">→</span>
-              <span class="win-label">技能1<span class="win-tag">缩放跟随</span></span>
+              <span class="win-label"><span data-i18n="mock.row1.label">Skill 1</span><span class="win-tag" data-i18n="mock.tag.scales">Scales</span></span>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="win-coord">(1047, 85)</span>
@@ -619,7 +637,7 @@
               <div class="win-toggle"></div>
               <div class="win-key">W</div>
               <span class="win-arrow">→</span>
-              <span class="win-label">技能2<span class="win-tag">缩放跟随</span></span>
+              <span class="win-label"><span data-i18n="mock.row2.label">Skill 2</span><span class="win-tag" data-i18n="mock.tag.scales2">Scales</span></span>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="win-coord">(1072, 74)</span>
@@ -631,7 +649,7 @@
               <div class="win-toggle off"></div>
               <div class="win-key" style="font-size:11px">⌘ E</div>
               <span class="win-arrow">→</span>
-              <span class="win-label">道具栏</span>
+              <span class="win-label" data-i18n="mock.row3.label">Inventory</span>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="win-coord">(1296, 983)</span>
@@ -640,7 +658,7 @@
           </div>
         </div>
         <div class="win-hotkey-strip">
-          <span style="color:#8e8e93">全局开关快捷键</span>
+          <span style="color:#8e8e93" data-i18n="mock.hotkey.label">Global toggle shortcut</span>
           <div class="win-hotkey-keys">
             <span class="win-key">⌃</span><span class="win-key">⇧</span><span class="win-key">K</span>
           </div>
@@ -653,100 +671,42 @@
 <!-- ── FEATURES ── -->
 <section class="features" id="features">
   <div class="container">
-    <p class="section-eyebrow reveal">核心功能</p>
-    <h2 class="section-title reveal">少即是多，但样样到位</h2>
-    <p class="section-sub reveal">从按键拦截到点击投递，每一步都为低延迟、零干扰、不出错而调校。</p>
+    <p class="section-eyebrow reveal" data-i18n="features.eyebrow">Core Features</p>
+    <h2 class="section-title reveal" data-i18n="features.title">Less, but everything that matters</h2>
+    <p class="section-sub reveal" data-i18n="features.sub">Engineered for low latency, zero distraction, and absolute reliability — one job, done well.</p>
 
     <div class="bento">
-      <!-- Row 1: wide + 1 -->
       <div class="bento-card wide reveal">
         <div class="bento-icon ic-blue">⌨️</div>
-        <h3>按键映射点击</h3>
-        <p>将任意键盘按键（支持 ⌘ ⇧ ⌥ ⌃ 等修饰键自由组合）绑定到应用窗口的指定坐标。按下即触发，响应延迟小于 5ms，比手动点击更快、更准。</p>
+        <h3 data-i18n="feat.map.title">Any key to any click</h3>
+        <p data-i18n="feat.map.body">Bind any keyboard shortcut — including free combinations of ⌘ ⇧ ⌥ ⌃ — or a mouse side button to an exact coordinate inside the target window. Press it, get a click in under 5 ms. Faster than your hand. More precise than your aim.</p>
       </div>
       <div class="bento-card reveal">
         <div class="bento-icon ic-green">🖱️</div>
-        <h3>光标纹丝不动</h3>
-        <p>模拟点击时鼠标指针完全静止，不影响当前正在进行的任何操作。</p>
+        <h3 data-i18n="feat.cursor.title">The cursor never moves</h3>
+        <p data-i18n="feat.cursor.body">Clicks are dispatched directly to the target. Your pointer stays exactly where you left it — nothing in flight is interrupted.</p>
       </div>
 
-      <!-- Row 2: 3 regular -->
-      <div class="bento-card reveal">
-        <div class="bento-icon ic-purple">🎯</div>
-        <h3>可视位置指示器</h3>
-        <p>透明覆盖层在每个映射坐标处显示红色标记，实时确认映射位置是否准确。</p>
-      </div>
       <div class="bento-card reveal">
         <div class="bento-icon ic-orange">📱</div>
-        <h3>iOS 游戏兼容</h3>
-        <p>完整支持通过 Apple Silicon 运行的 iPhone / iPad 游戏，iOS-on-Mac 架构无障碍。</p>
+        <h3 data-i18n="feat.ios.title">Made for iOS games on Mac</h3>
+        <p data-i18n="feat.ios.body">Native AppKit apps, Chromium browsers, and iPhone or iPad games on Apple Silicon — all handled automatically. Resize the window and your mappings scale right along with it.</p>
       </div>
-      <div class="bento-card reveal">
-        <div class="bento-icon ic-teal">🗂️</div>
-        <h3>多应用独立配置</h3>
-        <p>为不同应用单独管理映射组，切换前台应用时自动激活对应配置。</p>
+      <div class="bento-card wide reveal">
+        <div class="bento-icon ic-purple">🎬</div>
+        <h3 data-i18n="feat.macro.title">Multi-step macros, one trigger</h3>
+        <p data-i18n="feat.macro.body">A single keypress can fire a sequence of clicks, each with its own delay — seconds or minutes — and looped a fixed number of times or indefinitely. Press the trigger again to stop instantly. The menu bar glows red while it runs. Daily quests, periodic harvests, repeated refreshes: handled while you do something else.</p>
       </div>
 
-      <!-- Row 3: 1 + wide -->
-      <div class="bento-card reveal">
-        <div class="bento-icon ic-green">🌙</div>
-        <h3>睡眠唤醒自动恢复</h3>
-        <p>合盖重开或屏幕唤醒后，键盘监听自动重建，无需手动重启应用。</p>
-      </div>
       <div class="bento-card wide reveal">
         <div class="bento-icon ic-red">🔇</div>
-        <h3>文字输入智能保护</h3>
-        <p>通过 Accessibility API 实时检测焦点元素类型。当光标落入聊天框、搜索栏等输入控件时，键盘映射自动静默，按键原样传递给应用；离开输入框后无需任何操作，映射即刻恢复——在游戏内打字与触发技能之间随意切换，零干扰。</p>
+        <h3 data-i18n="feat.text.title">Smart enough to know when you're typing</h3>
+        <p data-i18n="feat.text.body">When focus lands in a chat box or search field, mappings step quietly aside and your keystrokes pass through untouched. Leave the field and they snap right back. Switch between typing and triggering without ever thinking about it.</p>
       </div>
-
-      <!-- Row 4: wide + 1 -->
-      <div class="bento-card wide reveal">
+      <div class="bento-card reveal">
         <div class="bento-icon ic-indigo">🛡️</div>
-        <h3>隐私优先，完全离线</h3>
-        <p>不联网，不收集数据，所有配置仅保存在本地 <code style="font-size:12px;background:rgba(0,0,0,.06);padding:2px 6px;border-radius:4px">~/Library/Application Support/KeysMirror/</code>。辅助功能权限仅用于键盘监听与窗口定位，不读取屏幕内容。</p>
-      </div>
-      <div class="bento-card reveal">
-        <div class="bento-icon ic-blue">🖱️</div>
-        <h3>鼠标侧键支持</h3>
-        <p>除键盘按键外，鼠标右键与侧键同样可作为触发器绑定映射。</p>
-      </div>
-
-      <!-- Row 5 (v1.4): 1 + wide -->
-      <div class="bento-card reveal">
-        <div class="bento-icon ic-green">🎚️</div>
-        <h3>逐条映射开关 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.4</span></h3>
-        <p>每条映射可独立启停，调试时无需删除即可临时禁用。</p>
-      </div>
-      <div class="bento-card wide reveal">
-        <div class="bento-icon ic-orange">⌨️</div>
-        <h3>全局开关快捷键 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.4</span></h3>
-        <p>可绑定全局热键（默认 <code style="font-size:12px;background:rgba(0,0,0,.06);padding:2px 6px;border-radius:4px">⌃⇧K</code>）一键启用 / 禁用映射，无需切换菜单栏。配合智能 tap 暂停——前台应用没有可用配置时事件 tap 自动停用，零开销待机。</p>
-      </div>
-
-      <!-- Row 6 (v1.4): wide + 1 -->
-      <div class="bento-card wide reveal">
-        <div class="bento-icon ic-purple">📦</div>
-        <h3>配置导入导出 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.4</span></h3>
-        <p>一键导出 JSON 配置（带 schema 版本号）跨设备同步；导入时支持「合并（同 bundleId 覆盖）」与「全部新建」两种模式，团队共享游戏配置零摩擦。</p>
-      </div>
-      <div class="bento-card reveal">
-        <div class="bento-icon ic-teal">📐</div>
-        <h3>窗口缩放跟随 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.3+</span></h3>
-        <p>录制时记录窗口尺寸快照，窗口被等比放大 / 缩小后点击位置按比例自动换算。</p>
-      </div>
-
-      <!-- Row 7 (v1.5): wide -->
-      <div class="bento-card wide reveal" style="grid-column: span 3;">
-        <div class="bento-icon ic-orange">🎬</div>
-        <h3>组合按键宏 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.5</span></h3>
-        <p>一个触发键执行多步点击：每步独立设置秒 / 分延迟，可循环 N 次或无限循环；运行中再按触发键即刻停止，菜单栏图标实时变红。游戏每日任务一条龙、半挂机周期性收菜、刷新——一键搞定。步骤位置可引用现有映射或现场录制，灵活组合。</p>
-      </div>
-
-      <!-- Row 8 (v1.6): wide -->
-      <div class="bento-card wide reveal" style="grid-column: span 3;">
-        <div class="bento-icon ic-orange">⚡</div>
-        <h3>响应更快、空闲更省 <span style="font-size:11px;font-weight:600;color:#30d158;background:rgba(48,209,88,.12);padding:3px 8px;border-radius:6px;vertical-align:middle;margin-left:4px">v1.6</span></h3>
-        <p>命中点击的热路径不再读盘、不再 AX IPC：iOS-on-Mac 判定与窗口 frame 全部按 bundleId 缓存，由系统通知精确失效。空闲时菜单栏 App 几乎不消耗 CPU，日志写入合并为 250ms 批次落盘。退出时对称清理 tap、Carbon 热键 handler 与观察者，不再残留。新增 27 条单测保护这些缓存，不影响任何使用流程。</p>
+        <h3 data-i18n="feat.privacy.title">Private. Offline. Always.</h3>
+        <p data-i18n="feat.privacy.body">No telemetry. No network calls. No screen reading. Your config stays on your Mac — and the only permission needed is for keys and window geometry.</p>
       </div>
     </div>
   </div>
@@ -755,9 +715,9 @@
 <!-- ── HOW IT WORKS ── -->
 <section class="how" id="how">
   <div class="container">
-    <p class="section-eyebrow reveal">三步上手</p>
-    <h2 class="section-title reveal">从零到「能用」只要两分钟</h2>
-    <p class="section-sub reveal">录制一次永久生效。不写脚本、不改注册表、不碰 SIP。</p>
+    <p class="section-eyebrow reveal" data-i18n="how.eyebrow">How it works</p>
+    <h2 class="section-title reveal" data-i18n="how.title">From zero to working in under two minutes</h2>
+    <p class="section-sub reveal" data-i18n="how.sub">Record once, use forever. No scripts. No system tweaks. No SIP changes.</p>
 
     <div class="steps-flow">
 
@@ -765,14 +725,14 @@
       <div class="step-row reveal">
         <div class="step-text">
           <div class="step-num-tag">1</div>
-          <h3>选择目标应用</h3>
-          <p>点击菜单栏图标，打开配置面板，从正在运行的应用列表中选择你想要控制的目标应用，一次配置永久生效。</p>
+          <h3 data-i18n="step1.title">Pick a target app</h3>
+          <p data-i18n="step1.body">Click the menu bar icon, open the configuration panel, and choose any running application. Configure once — KeysMirror remembers it for good.</p>
         </div>
         <div class="step-visual">
           <div class="illus-app-list">
-            <div class="illus-list-title">运行中的应用</div>
+            <div class="illus-list-title" data-i18n="step1.illus.title">Running Apps</div>
             <div class="illus-list-item selected">
-              <div class="illus-app-dot"></div>问道
+              <div class="illus-app-dot"></div><span data-i18n="step1.illus.app">Wandao Online</span>
             </div>
             <div class="illus-list-item">
               <div class="illus-app-dot" style="background:#0078d4"></div>Microsoft Edge
@@ -781,7 +741,7 @@
               <div class="illus-app-dot" style="background:#e06c75"></div>Surge
             </div>
             <div class="illus-add-btn">
-              <span style="color:#636366;font-size:16px">+</span> 添加应用
+              <span style="color:#636366;font-size:16px">+</span> <span data-i18n="step1.illus.add">Add app</span>
             </div>
           </div>
         </div>
@@ -791,23 +751,23 @@
       <div class="step-row reveal">
         <div class="step-text">
           <div class="step-num-tag">2</div>
-          <h3>录制触发键与点击位置</h3>
-          <p>点击「录制触发」，按下想绑定的任意键盘按键；再点击「录制位置」，切换到目标应用后在目标窗口内点击一次，坐标自动记录完成。</p>
+          <h3 data-i18n="step2.title">Record a trigger and a position</h3>
+          <p data-i18n="step2.body">Tap "Record Trigger" and press the key you want to bind. Tap "Record Position" and click anywhere in the target window. Done — the coordinates are captured automatically.</p>
         </div>
         <div class="step-visual">
           <div class="illus-record-ui">
             <div class="illus-record-row">
-              <span class="illus-record-label">触发按键</span>
+              <span class="illus-record-label" data-i18n="step2.illus.trigger">Trigger key</span>
               <div class="illus-record-val">
                 <span class="illus-kbd">C</span>
-                <span class="illus-rec-btn">已录制</span>
+                <span class="illus-rec-btn" data-i18n="step2.illus.captured">Captured</span>
               </div>
             </div>
             <div class="illus-record-row">
-              <span class="illus-record-label">目标坐标</span>
+              <span class="illus-record-label" data-i18n="step2.illus.target">Target point</span>
               <div class="illus-record-val">
                 <span class="illus-coord">(1047, 853)</span>
-                <span class="illus-rec-btn recording">录制中…</span>
+                <span class="illus-rec-btn recording" data-i18n="step2.illus.recording">Recording…</span>
               </div>
             </div>
           </div>
@@ -818,15 +778,15 @@
       <div class="step-row reveal">
         <div class="step-text">
           <div class="step-num-tag">3</div>
-          <h3>按下即触发，完成</h3>
-          <p>切换到目标应用，按下绑定的按键。KeysMirror 立刻在录制的位置模拟一次精准点击，菜单栏图标短暂变绿以示确认，光标不会移动。</p>
+          <h3 data-i18n="step3.title">Press, click, repeat</h3>
+          <p data-i18n="step3.body">Switch to the app and press your key. KeysMirror fires a precise click at the recorded spot, the menu bar flashes green to confirm — and your cursor doesn't move a millimetre.</p>
         </div>
         <div class="step-visual">
           <div class="illus-trigger-wrap">
             <div class="illus-menubar-strip">
               <span class="illus-menubar-icon">⌨️</span>
               <span style="font-size:13px;color:#ebebf5">KeysMirror</span>
-              <span class="illus-menubar-time">刚刚触发</span>
+              <span class="illus-menubar-time" data-i18n="step3.illus.time">just fired</span>
             </div>
             <div class="illus-click-spot">
               <div class="illus-click-dot"></div>
@@ -844,18 +804,18 @@
 <!-- ── COMPAT ── -->
 <section class="compat" id="compat">
   <div class="container">
-    <p class="section-eyebrow reveal" style="color:#636366">广泛兼容</p>
-    <h2 class="section-title reveal">你用的应用，都能映射</h2>
-    <p class="section-sub reveal">原生 / iOS-on-Mac / Chromium 三套投递方案自动识别——一处配置，处处生效。</p>
+    <p class="section-eyebrow reveal" style="color:#636366" data-i18n="compat.eyebrow">Works everywhere</p>
+    <h2 class="section-title reveal" data-i18n="compat.title">If you use it, KeysMirror maps to it</h2>
+    <p class="section-sub reveal" data-i18n="compat.sub">Native, iOS-on-Mac, and Chromium delivery paths — auto-detected, transparently. Configure once, and it just works.</p>
     <div class="app-grid reveal">
       <span class="app-chip"><span class="app-chip-dot" style="background:#0078d4"></span>Microsoft Edge</span>
       <span class="app-chip"><span class="app-chip-dot" style="background:#4285f4"></span>Google Chrome</span>
-      <span class="app-chip"><span class="app-chip-dot" style="background:#ff6b35"></span>iOS 游戏</span>
-      <span class="app-chip"><span class="app-chip-dot" style="background:#6b6b6b"></span>终端</span>
+      <span class="app-chip"><span class="app-chip-dot" style="background:#ff6b35"></span><span data-i18n="compat.chip.ios">iOS Games</span></span>
+      <span class="app-chip"><span class="app-chip-dot" style="background:#6b6b6b"></span><span data-i18n="compat.chip.term">Terminal</span></span>
       <span class="app-chip"><span class="app-chip-dot" style="background:#e06c75"></span>Surge</span>
       <span class="app-chip"><span class="app-chip-dot" style="background:#61afef"></span>VS Code</span>
-      <span class="app-chip"><span class="app-chip-dot" style="background:#30d158"></span>原生 macOS 应用</span>
-      <span class="app-chip"><span class="app-chip-dot" style="background:#bf5af2"></span>以及更多…</span>
+      <span class="app-chip"><span class="app-chip-dot" style="background:#30d158"></span><span data-i18n="compat.chip.native">Native macOS apps</span></span>
+      <span class="app-chip"><span class="app-chip-dot" style="background:#bf5af2"></span><span data-i18n="compat.chip.more">…and more</span></span>
     </div>
   </div>
 </section>
@@ -863,24 +823,24 @@
 <!-- ── REQUIREMENTS ── -->
 <section class="req">
   <div class="container">
-    <p class="section-eyebrow reveal">系统要求</p>
-    <h2 class="section-title reveal">轻量，开箱即用</h2>
-    <p class="section-sub reveal">无需安装驱动，无需关闭 SIP，仅需一项系统权限。</p>
+    <p class="section-eyebrow reveal" data-i18n="req.eyebrow">Requirements</p>
+    <h2 class="section-title reveal" data-i18n="req.title">Lightweight. Ready out of the box.</h2>
+    <p class="section-sub reveal" data-i18n="req.sub">No drivers. No SIP changes. Just one system permission.</p>
     <div class="req-grid">
       <div class="req-card reveal">
         <div class="icon">🍎</div>
-        <h4>macOS 13+</h4>
-        <p>Ventura 或更高版本，支持 Intel 与 Apple Silicon</p>
+        <h4 data-i18n="req.os.title">macOS 13 or later</h4>
+        <p data-i18n="req.os.body">Ventura and beyond. Apple Silicon and Intel both fully supported.</p>
       </div>
       <div class="req-card reveal">
         <div class="icon">♿️</div>
-        <h4>辅助功能权限</h4>
-        <p>用于监听键盘事件与模拟鼠标点击，首次启动时一键授权</p>
+        <h4 data-i18n="req.ax.title">Accessibility access</h4>
+        <p data-i18n="req.ax.body">Used to listen for keys and dispatch clicks. One tap to grant on first launch.</p>
       </div>
       <div class="req-card reveal">
         <div class="icon">💾</div>
-        <h4>极小体积</h4>
-        <p>安装包不足 1 MB，常驻内存占用极低，对系统性能零影响</p>
+        <h4 data-i18n="req.size.title">Vanishingly small</h4>
+        <p data-i18n="req.size.body">Under 1 MB to install. Memory footprint is negligible — your system won't feel it.</p>
       </div>
     </div>
   </div>
@@ -889,15 +849,15 @@
 <!-- ── CTA ── -->
 <section class="cta-section" id="download">
   <div style="position:relative;z-index:1">
-    <h2 class="reveal">让每一次按键都落在你想要的地方</h2>
-    <p class="reveal">免费 · 离线 · 开源。无订阅、无遥测、不联网。</p>
+    <h2 class="reveal" data-i18n="cta.title">Make every keystroke land where you want it.</h2>
+    <p class="reveal" data-i18n="cta.body">Free. Offline. Open source. No subscription. No tracking. No connection.</p>
     <a class="btn-primary reveal" href="https://github.com/framecy/KeysMirror/releases/latest"
        style="font-size:17px;padding:16px 36px">
       <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M4 7l4 4 4-4M2 13h12" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      免费下载 KeysMirror
+      <span data-i18n="cta.btn">Download KeysMirror — Free</span>
     </a>
-    <p style="margin-top:20px;font-size:13px;color:rgba(245,245,247,.4)">
-      macOS 13 Ventura 或更高版本 · Apple Silicon 与 Intel 均支持
+    <p style="margin-top:20px;font-size:13px;color:rgba(245,245,247,.4)" data-i18n="cta.note">
+      macOS 13 Ventura or later · Apple Silicon and Intel both supported
     </p>
   </div>
 </section>
@@ -907,21 +867,228 @@
   <div class="footer-inner">
     <div>
       <div class="footer-brand">KeysMirror</div>
-      <div class="footer-brand-sub">按键，即点击</div>
+      <div class="footer-brand-sub" data-i18n="footer.tagline">Press a key. Place a click.</div>
     </div>
     <div class="footer-links">
       <a href="https://github.com/framecy/KeysMirror">GitHub</a>
-      <a href="https://github.com/framecy/KeysMirror/releases">Releases</a>
-      <a href="https://github.com/framecy/KeysMirror/issues">反馈问题</a>
-      <a href="https://github.com/framecy/KeysMirror/blob/main/README.md">文档</a>
+      <a href="https://github.com/framecy/KeysMirror/releases" data-i18n="footer.releases">Releases</a>
+      <a href="https://github.com/framecy/KeysMirror/issues" data-i18n="footer.issues">Report an issue</a>
+      <a href="https://github.com/framecy/KeysMirror/blob/main/README.md" data-i18n="footer.docs">Docs</a>
     </div>
   </div>
-  <div class="footer-copy">
-    Copyright © 2026 KeysMirror. MIT License. 使用 ♥ 制作于 macOS.
+  <div class="footer-copy" data-i18n="footer.copy">
+    Copyright © 2026 KeysMirror. MIT License. Made with ♥ on macOS.
   </div>
 </footer>
 
 <script>
+  /* ───── i18n dictionary ───── */
+  const I18N = {
+    en: {
+      'meta.title': 'KeysMirror — Press a key. Place a click.',
+      'meta.description': "Map any keyboard shortcut to a precise click inside any app's window — without ever moving the cursor. Native macOS apps and iOS-on-Mac games, equally well.",
+      'nav.features': 'Features',
+      'nav.how': 'How it works',
+      'nav.compat': 'Compatibility',
+      'nav.download': 'Download',
+      'nav.cta': 'Free Download · v1.6',
+      'nav.lang': '中',
+      'hero.eyebrow': 'macOS Menu Bar Utility · v1.6 Available',
+      'hero.title': 'Press a key. <em>Place a click.</em>',
+      'hero.sub': "Map any keyboard shortcut to a precise click inside an app's window. The cursor never moves. Native macOS apps and iOS-on-Mac games — both, equally well.",
+      'hero.btn.download': 'Download KeysMirror',
+      'hero.btn.github': 'GitHub',
+      'hero.note': 'macOS 13+ · Free & open source · No subscription',
+      'mock.sidebar.title': 'Configured Apps',
+      'mock.app.game': 'Wandao Online',
+      'mock.badge': 'Mappings active',
+      'mock.row1.label': 'Skill 1',
+      'mock.row2.label': 'Skill 2',
+      'mock.row3.label': 'Inventory',
+      'mock.tag.scales': 'Scales',
+      'mock.tag.scales2': 'Scales',
+      'mock.hotkey.label': 'Global toggle shortcut',
+      'features.eyebrow': 'Core Features',
+      'features.title': 'Less, but everything that matters',
+      'features.sub': 'Engineered for low latency, zero distraction, and absolute reliability — one job, done well.',
+      'feat.map.title': 'Any key to any click',
+      'feat.map.body': 'Bind any keyboard shortcut — including free combinations of ⌘ ⇧ ⌥ ⌃ — or a mouse side button to an exact coordinate inside the target window. Press it, get a click in under 5 ms. Faster than your hand. More precise than your aim.',
+      'feat.cursor.title': 'The cursor never moves',
+      'feat.cursor.body': 'Clicks are dispatched directly to the target. Your pointer stays exactly where you left it — nothing in flight is interrupted.',
+      'feat.ios.title': 'Made for iOS games on Mac',
+      'feat.ios.body': 'Native AppKit apps, Chromium browsers, and iPhone or iPad games on Apple Silicon — all handled automatically. Resize the window and your mappings scale right along with it.',
+      'feat.macro.title': 'Multi-step macros, one trigger',
+      'feat.macro.body': 'A single keypress can fire a sequence of clicks, each with its own delay — seconds or minutes — and looped a fixed number of times or indefinitely. Press the trigger again to stop instantly. The menu bar glows red while it runs. Daily quests, periodic harvests, repeated refreshes: handled while you do something else.',
+      'feat.text.title': "Smart enough to know when you're typing",
+      'feat.text.body': 'When focus lands in a chat box or search field, mappings step quietly aside and your keystrokes pass through untouched. Leave the field and they snap right back. Switch between typing and triggering without ever thinking about it.',
+      'feat.privacy.title': 'Private. Offline. Always.',
+      'feat.privacy.body': 'No telemetry. No network calls. No screen reading. Your config stays on your Mac — and the only permission needed is for keys and window geometry.',
+      'how.eyebrow': 'How it works',
+      'how.title': 'From zero to working in under two minutes',
+      'how.sub': 'Record once, use forever. No scripts. No system tweaks. No SIP changes.',
+      'step1.title': 'Pick a target app',
+      'step1.body': 'Click the menu bar icon, open the configuration panel, and choose any running application. Configure once — KeysMirror remembers it for good.',
+      'step1.illus.title': 'Running Apps',
+      'step1.illus.app': 'Wandao Online',
+      'step1.illus.add': 'Add app',
+      'step2.title': 'Record a trigger and a position',
+      'step2.body': 'Tap "Record Trigger" and press the key you want to bind. Tap "Record Position" and click anywhere in the target window. Done — the coordinates are captured automatically.',
+      'step2.illus.trigger': 'Trigger key',
+      'step2.illus.target': 'Target point',
+      'step2.illus.captured': 'Captured',
+      'step2.illus.recording': 'Recording…',
+      'step3.title': 'Press, click, repeat',
+      'step3.body': "Switch to the app and press your key. KeysMirror fires a precise click at the recorded spot, the menu bar flashes green to confirm — and your cursor doesn't move a millimetre.",
+      'step3.illus.time': 'just fired',
+      'compat.eyebrow': 'Works everywhere',
+      'compat.title': 'If you use it, KeysMirror maps to it',
+      'compat.sub': 'Native, iOS-on-Mac, and Chromium delivery paths — auto-detected, transparently. Configure once, and it just works.',
+      'compat.chip.ios': 'iOS Games',
+      'compat.chip.term': 'Terminal',
+      'compat.chip.native': 'Native macOS apps',
+      'compat.chip.more': '…and more',
+      'req.eyebrow': 'Requirements',
+      'req.title': 'Lightweight. Ready out of the box.',
+      'req.sub': 'No drivers. No SIP changes. Just one system permission.',
+      'req.os.title': 'macOS 13 or later',
+      'req.os.body': 'Ventura and beyond. Apple Silicon and Intel both fully supported.',
+      'req.ax.title': 'Accessibility access',
+      'req.ax.body': 'Used to listen for keys and dispatch clicks. One tap to grant on first launch.',
+      'req.size.title': 'Vanishingly small',
+      'req.size.body': "Under 1 MB to install. Memory footprint is negligible — your system won't feel it.",
+      'cta.title': 'Make every keystroke land where you want it.',
+      'cta.body': 'Free. Offline. Open source. No subscription. No tracking. No connection.',
+      'cta.btn': 'Download KeysMirror — Free',
+      'cta.note': 'macOS 13 Ventura or later · Apple Silicon and Intel both supported',
+      'footer.tagline': 'Press a key. Place a click.',
+      'footer.releases': 'Releases',
+      'footer.issues': 'Report an issue',
+      'footer.docs': 'Docs',
+      'footer.copy': 'Copyright © 2026 KeysMirror. MIT License. Made with ♥ on macOS.'
+    },
+    zh: {
+      'meta.title': 'KeysMirror — 按下一个键，落下一次点击',
+      'meta.description': '把任意键盘快捷键映射成应用窗口里的精准点击。光标不动一毫，原生 macOS 与 iOS 游戏一视同仁。',
+      'nav.features': '功能',
+      'nav.how': '使用方式',
+      'nav.compat': '兼容性',
+      'nav.download': '下载',
+      'nav.cta': '免费下载 · v1.6',
+      'nav.lang': 'EN',
+      'hero.eyebrow': 'macOS 菜单栏工具 · v1.6 已发布',
+      'hero.title': '按下一个键，<em>落下一次点击。</em>',
+      'hero.sub': '把任意键盘快捷键映射成应用窗口里的精准点击。光标不动一毫——原生 macOS 应用与 iOS 移植游戏，统统一视同仁。',
+      'hero.btn.download': '下载 KeysMirror',
+      'hero.btn.github': 'GitHub',
+      'hero.note': 'macOS 13+ · 免费开源 · 无需订阅',
+      'mock.sidebar.title': '已配置应用',
+      'mock.app.game': '问道',
+      'mock.badge': '映射已启用',
+      'mock.row1.label': '技能 1',
+      'mock.row2.label': '技能 2',
+      'mock.row3.label': '道具栏',
+      'mock.tag.scales': '缩放跟随',
+      'mock.tag.scales2': '缩放跟随',
+      'mock.hotkey.label': '全局开关快捷键',
+      'features.eyebrow': '核心功能',
+      'features.title': '少而精，但样样到位',
+      'features.sub': '为低延迟、零干扰、绝对稳定而生——只做一件事，做到极致。',
+      'feat.map.title': '按键即点击',
+      'feat.map.body': '把任意键盘按键（含 ⌘ ⇧ ⌥ ⌃ 自由组合）或鼠标侧键，绑定到目标窗口的精确坐标。按下即触发，响应小于 5 毫秒——比手快、比眼准。',
+      'feat.cursor.title': '光标纹丝不动',
+      'feat.cursor.body': '点击直接投递到目标进程，鼠标指针停在你离手的那一刻——任何正在进行的操作都不会被打断。',
+      'feat.ios.title': '为 iOS 游戏而生',
+      'feat.ios.body': '原生应用、Chromium 浏览器、Apple Silicon 上的 iPhone / iPad 游戏，全部自动适配。窗口被等比缩放？映射位置自动按比例跟随。',
+      'feat.macro.title': '一键触发多步宏',
+      'feat.macro.body': '一个触发键执行多步点击，每步独立设置秒 / 分延迟，可循环 N 次或无限循环。运行中再按触发键即刻停止，菜单栏图标实时变红提示。每日任务、周期收菜、自动刷新——你做别的事，它替你完成。',
+      'feat.text.title': '打字时自动让位',
+      'feat.text.body': '焦点落入聊天框、搜索栏，键盘映射立即静默，按键原样传给应用；离开输入框即刻恢复——打字与触发技能无缝切换，零干扰。',
+      'feat.privacy.title': '隐私优先，永不联网',
+      'feat.privacy.body': '不上报、不联网、不读屏。所有配置只在本地，权限仅用于按键监听与窗口定位。',
+      'how.eyebrow': '使用方式',
+      'how.title': '从零到能用，只要两分钟',
+      'how.sub': '录制一次，永久生效。不写脚本、不动系统、不碰 SIP。',
+      'step1.title': '选择目标应用',
+      'step1.body': '点击菜单栏图标，打开配置面板，从运行中的应用中选一个。一次配置，永久生效——KeysMirror 会牢牢记住。',
+      'step1.illus.title': '运行中的应用',
+      'step1.illus.app': '问道',
+      'step1.illus.add': '添加应用',
+      'step2.title': '录制触发键与位置',
+      'step2.body': '点「录制触发」按下想绑定的键；点「录制位置」在目标窗口内点一下。完成——坐标自动记录。',
+      'step2.illus.trigger': '触发按键',
+      'step2.illus.target': '目标坐标',
+      'step2.illus.captured': '已录制',
+      'step2.illus.recording': '录制中…',
+      'step3.title': '按下、点击、重复',
+      'step3.body': '切到目标应用按下绑定键，KeysMirror 立刻在录制位置精准点击，菜单栏图标短暂变绿确认——光标不会移动一毫米。',
+      'step3.illus.time': '刚刚触发',
+      'compat.eyebrow': '广泛兼容',
+      'compat.title': '你用什么应用，它就映射什么',
+      'compat.sub': '原生、iOS-on-Mac、Chromium 三套投递方案自动识别——一处配置，处处生效。',
+      'compat.chip.ios': 'iOS 游戏',
+      'compat.chip.term': '终端',
+      'compat.chip.native': '原生 macOS 应用',
+      'compat.chip.more': '以及更多…',
+      'req.eyebrow': '系统要求',
+      'req.title': '轻量，开箱即用',
+      'req.sub': '无需驱动，无需关闭 SIP，仅需一项系统权限。',
+      'req.os.title': 'macOS 13 或更高',
+      'req.os.body': 'Ventura 及以上版本，Intel 与 Apple Silicon 全支持。',
+      'req.ax.title': '辅助功能权限',
+      'req.ax.body': '用于监听键盘与模拟点击，首次启动一键授权。',
+      'req.size.title': '极小体积',
+      'req.size.body': '安装包不到 1 MB，常驻内存可忽略不计——系统几乎感知不到它。',
+      'cta.title': '让每一次按键，都落在你想要的地方。',
+      'cta.body': '免费 · 离线 · 开源。无订阅、无遥测、不联网。',
+      'cta.btn': '免费下载 KeysMirror',
+      'cta.note': 'macOS 13 Ventura 或更高 · Intel 与 Apple Silicon 均支持',
+      'footer.tagline': '按下一个键，落下一次点击。',
+      'footer.releases': 'Releases',
+      'footer.issues': '反馈问题',
+      'footer.docs': '文档',
+      'footer.copy': 'Copyright © 2026 KeysMirror. MIT License. 使用 ♥ 制作于 macOS.'
+    }
+  };
+
+  function applyLang(lang) {
+    const dict = I18N[lang] || I18N.en;
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const v = dict[el.getAttribute('data-i18n')];
+      if (v != null) el.textContent = v;
+    });
+    document.querySelectorAll('[data-i18n-html]').forEach(el => {
+      const v = dict[el.getAttribute('data-i18n-html')];
+      if (v != null) el.innerHTML = v;
+    });
+
+    if (dict['meta.title']) document.title = dict['meta.title'];
+    const desc = document.querySelector('meta[name="description"]');
+    if (desc && dict['meta.description']) desc.setAttribute('content', dict['meta.description']);
+
+    const tog = document.getElementById('lang-toggle');
+    if (tog) tog.textContent = dict['nav.lang'];
+
+    try { localStorage.setItem('km_lang', lang); } catch (e) {}
+  }
+
+  /* default = English; persist user choice */
+  const stored = (() => { try { return localStorage.getItem('km_lang'); } catch (e) { return null; } })();
+  const initialLang = (stored === 'zh' || stored === 'en') ? stored : 'en';
+  applyLang(initialLang);
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const tog = document.getElementById('lang-toggle');
+    if (tog) {
+      tog.addEventListener('click', () => {
+        const cur = document.documentElement.lang === 'zh-CN' ? 'zh' : 'en';
+        applyLang(cur === 'zh' ? 'en' : 'zh');
+      });
+    }
+  });
+
+  /* ───── reveal-on-scroll (unchanged) ───── */
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => {
       if (e.isIntersecting) {
