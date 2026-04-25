@@ -5,13 +5,16 @@ final class ConfigurationWindowController {
     static let shared = ConfigurationWindowController()
 
     private var window: NSWindow?
+    private var willCloseObserver: NSObjectProtocol?
+
+    /// 测试钩子：close 后 willClose 通知必须把强引用清干净。
+    var hasWindowReference: Bool { window != nil }
 
     func show() {
-        // NSWindow 默认 isReleasedWhenClosed=true，用户点红叉关闭后底层对象被释放，
-        // 我们的强引用会变野指针；下次 makeKeyAndOrderFront 触发 objc_msgSend 闪退。
-        // 同时防御：即使设了 false，长时间运行下若窗口被外部销毁（比如系统回收），
-        // 也通过 contentView 是否还在来判断要不要重建。
-        if window == nil || window?.contentView == nil {
+        // 主防线：isReleasedWhenClosed = false 让 close 不释放底层对象。
+        // 副防线：监听 willClose，发生时主动 nil 强引用——即使主防线被未来重构误删，
+        // 下次 show() 看到 nil 直接重建，杜绝野指针 objc_msgSend 闪退。
+        if window == nil {
             let rootView = ConfigurationWindow()
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 860, height: 560),
@@ -23,6 +26,22 @@ final class ConfigurationWindowController {
             window.title = "KeysMirror 配置"
             window.center()
             window.contentView = NSHostingView(rootView: rootView)
+
+            // 副防线只在「窗口即将真的被释放」时触发：
+            // 正常情况下 isReleasedWhenClosed=false，close 只是隐藏，引用保留以复用 SwiftUI 状态；
+            // 若未来重构误把 isReleasedWhenClosed 改回 true（默认值），close 后底层会释放，
+            // 这里在 dealloc 之前主动 nil 强引用，下次 show() 看到 nil 直接重建，不会野指针闪退。
+            willCloseObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] note in
+                guard let win = note.object as? NSWindow, win.isReleasedWhenClosed else { return }
+                MainActor.assumeIsolated {
+                    self?.releaseWindow()
+                }
+            }
+
             self.window = window
         }
 
@@ -32,6 +51,14 @@ final class ConfigurationWindowController {
 
     func hide() {
         window?.orderOut(nil)
+    }
+
+    private func releaseWindow() {
+        if let obs = willCloseObserver {
+            NotificationCenter.default.removeObserver(obs)
+            willCloseObserver = nil
+        }
+        window = nil
     }
 }
 
