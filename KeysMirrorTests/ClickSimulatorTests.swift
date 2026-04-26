@@ -45,6 +45,31 @@ final class ClickSimulatorTests: XCTestCase {
         XCTAssertEqual(providerCalls, 1, "同一 bundleId 第二次起应命中缓存，不再读 plist")
     }
 
+    /// v1.6.2 新增：iOS-on-Mac 路径必须按 disassociate → post → warp → re-associate 的顺序，
+    /// 否则会有一帧光标停在 click 点导致视觉抖动 / 连击「漂移」。
+    func testIosOnMacClickFollowsCorrectCursorOrdering() {
+        var calls: [String] = []
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { calls.append("save"); return CGPoint(x: 100, y: 100) },
+            associate: { connected in calls.append("associate(\(connected ? "true" : "false"))") },
+            warp: { _ in calls.append("warp") },
+            post: { _ in calls.append("post") }
+        )
+        defer { ClickSimulator.shared.cursorOps = .system }
+
+        // targetApp = nil → pid = 0 → 走 iOS-on-Mac 分支
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 500, y: 500), targetApp: nil)
+
+        XCTAssertEqual(calls, [
+            "save",                 // 先存当前光标位置
+            "associate(false)",     // 再断开光标关联
+            "post",                 // mouseDown
+            "post",                 // mouseUp
+            "warp",                 // 关键：先 warp 回原位
+            "associate(true)"       // 然后才 re-associate，避免光标抖动
+        ])
+    }
+
     func testTerminateNotificationInvalidatesCacheEntry() async {
         ClickSimulator.shared.clearNativeCacheForTesting()
         var providerCalls = 0

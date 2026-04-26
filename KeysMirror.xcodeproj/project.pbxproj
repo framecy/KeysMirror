@@ -46,6 +46,7 @@
 		DE2F834203EA5C1153499AAD /* KeyMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A81D065BCAA4647BCFA282 /* KeyMapping.swift */; };
 		E08BF3530D871B3B651440C6 /* CoordinateConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CED6175B47061D770C61473A /* CoordinateConverterTests.swift */; };
 		E2D162DEB029A467CF668136 /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A213DDF4583E3F0E0A589609 /* AppLogger.swift */; };
+		E8AF9DB5D3BD3E42F3052074 /* TriggerThrottleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04546E9818558BC195EB588 /* TriggerThrottleTests.swift */; };
 		EF076CD41E145A6FD3DD9317 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9A0D1FB1293197FB99CEEE44 /* Assets.xcassets */; };
 		F9248B551BBB9BF6CFD9764A /* MacroRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB169653A6584E8DAE85981 /* MacroRunner.swift */; };
 /* End PBXBuildFile section */
@@ -102,6 +103,7 @@
 		D5A1A5209AEE7D51C7EF49E2 /* TriggerRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerRecorder.swift; sourceTree = "<group>"; };
 		DCE1ACD7AD66234A9B57AD71 /* ClickSimulatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickSimulatorTests.swift; sourceTree = "<group>"; };
 		EEC338B1B19280676438D28B /* MacroActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacroActionTests.swift; sourceTree = "<group>"; };
+		F04546E9818558BC195EB588 /* TriggerThrottleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerThrottleTests.swift; sourceTree = "<group>"; };
 		F35819281FE10182022B6D36 /* ModifierHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModifierHelper.swift; sourceTree = "<group>"; };
 		FBD63521281082932F2F5957 /* MappingIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MappingIndicatorView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -143,6 +145,7 @@
 				EEC338B1B19280676438D28B /* MacroActionTests.swift */,
 				88066674B3984317FB7A0126 /* MacroRunnerTests.swift */,
 				247424528B3B0B8A455997F1 /* MappingStoreTests.swift */,
+				F04546E9818558BC195EB588 /* TriggerThrottleTests.swift */,
 				32B9A3FBCBB52AD009C41A08 /* WindowLocatorCacheTests.swift */,
 			);
 			path = KeysMirrorTests;
@@ -330,6 +333,7 @@
 				B130CADDAC5134CF5936DD00 /* MacroActionTests.swift in Sources */,
 				5A99087D6015195B7375860A /* MacroRunnerTests.swift in Sources */,
 				C7D8CAC9AFA188B561C5B052 /* MappingStoreTests.swift in Sources */,
+				E8AF9DB5D3BD3E42F3052074 /* TriggerThrottleTests.swift in Sources */,
 				C2AC4F24F57D273E661C218A /* WindowLocatorCacheTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

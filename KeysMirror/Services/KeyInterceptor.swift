@@ -17,6 +17,10 @@ final class KeyInterceptor {
     private var userEnabled: Bool = false
     /// 当前前台 app 是否有启用的 profile（由 AppDelegate 监听前台切换推送）
     private var hasActiveProfile: Bool = true
+    /// 同 mapping 35ms 内重复触发节流。防止用户连击或物理按键抖动把 iOS-on-Mac 游戏的
+    /// 输入队列灌爆——60fps 单帧 16ms，35ms 上限留 ~28 次/秒，远高于人类输入速率，
+    /// 远低于游戏 UI 假死阈值。
+    var triggerThrottle = TriggerThrottle()
 
     /// 用户可见的启用状态：反映用户意图而非 tap 是否正在工作。
     /// 智能暂停（hasActiveProfile=false）时菜单栏仍显示为"已启用"，避免误导。
@@ -163,6 +167,12 @@ final class KeyInterceptor {
         }
 
         if let mapping = matchingMapping {
+            // 节流：同 mapping 35ms 内重复触发立即丢弃。blockInput 仍按映射设置生效，
+            // 否则用户连按时游戏会同时收到原始按键，破坏拦截语义。
+            if !triggerThrottle.shouldFire(mapping.id, now: Date.timeIntervalSinceReferenceDate) {
+                return mapping.blockInput ? nil : Unmanaged.passRetained(event)
+            }
+
             guard let windowFrame = windowLocator.focusedWindowFrame(for: bundleId) else {
                 logger.log("匹配成功但无法读取 [\(bundleId)] 窗口位置", type: "ERROR")
                 return Unmanaged.passRetained(event)
@@ -253,4 +263,26 @@ final class KeyInterceptor {
 
 private struct UnsafeOptionalEvent: @unchecked Sendable {
     let value: CGEvent?
+}
+
+/// 按 UUID 维护「上次触发时刻」的小型节流器。@MainActor 串行访问，无需锁。
+struct TriggerThrottle {
+    /// 节流窗口，单位秒。35ms = 60fps 游戏 ~2 帧，留够 UI 反应时间。
+    var intervalSeconds: TimeInterval = 0.035
+
+    private var lastFire: [UUID: TimeInterval] = [:]
+
+    /// 返回 true 表示允许触发并已记账；false 表示节流命中应丢弃。
+    mutating func shouldFire(_ id: UUID, now: TimeInterval) -> Bool {
+        if let last = lastFire[id], now - last < intervalSeconds {
+            return false
+        }
+        lastFire[id] = now
+        return true
+    }
+
+    /// 测试钩子：清空全部记录。
+    mutating func resetForTesting() {
+        lastFire.removeAll()
+    }
 }
