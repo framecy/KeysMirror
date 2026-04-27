@@ -35,9 +35,12 @@ final class ConfigurationWindowController {
                 forName: NSWindow.willCloseNotification,
                 object: window,
                 queue: .main
-            ) { [weak self] note in
-                guard let win = note.object as? NSWindow, win.isReleasedWhenClosed else { return }
+            ) { [weak self] _ in
+                // observer 已绑定到特定 window（object: window），每次回调一定是这个窗口，
+                // 不必从 note 解包——note: Notification 不 Sendable，跨 actor 传会被 strict
+                // concurrency 拦下。直接通过 self.window 检查 isReleasedWhenClosed。
                 MainActor.assumeIsolated {
+                    guard self?.window?.isReleasedWhenClosed == true else { return }
                     self?.releaseWindow()
                 }
             }

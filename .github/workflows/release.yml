@@ -51,13 +51,20 @@ jobs:
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.pkg.outputs.tag }}"
           ZIP="${{ steps.pkg.outputs.zip }}"
-          gh release create "$TAG" "$ZIP" \
-            --title "$TAG" \
-            --notes "Automated release for $TAG. See README for changelog." \
-            --draft
+          # 幂等：如果手动流程已经创建了 release（带定制 notes），仅追加/覆盖 zip 资产；
+          # 否则按默认 notes 创建一个 draft release 等待手工 publish。
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, uploading asset (clobber)"
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" "$ZIP" \
+              --title "$TAG" \
+              --notes "Automated release for $TAG. See README for changelog." \
+              --draft
+          fi

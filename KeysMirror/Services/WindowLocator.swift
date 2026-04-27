@@ -120,7 +120,7 @@ final class WindowLocator {
 
     private func frame(for windowValue: CFTypeRef) -> CGRect? {
         guard CFGetTypeID(windowValue) == AXUIElementGetTypeID() else { return nil }
-        let window = unsafeBitCast(windowValue, to: AXUIElement.self)
+        let window = unsafeDowncast(windowValue, to: AXUIElement.self)
         return frame(for: window)
     }
 
@@ -149,13 +149,13 @@ final class WindowLocator {
 
         var origin = CGPoint.zero
         var size = CGSize.zero
-        AXValueGetValue(unsafeBitCast(positionValue, to: AXValue.self), .cgPoint, &origin)
-        AXValueGetValue(unsafeBitCast(sizeValue, to: AXValue.self), .cgSize, &size)
+        AXValueGetValue(unsafeDowncast(positionValue, to: AXValue.self), .cgPoint, &origin)
+        AXValueGetValue(unsafeDowncast(sizeValue, to: AXValue.self), .cgSize, &size)
         return CGRect(origin: origin, size: size)
     }
 
     private func unpackWindows(from value: CFTypeRef) -> [AXUIElement] {
-        let array = unsafeBitCast(value, to: CFArray.self)
+        let array = unsafeDowncast(value, to: CFArray.self)
         let count = CFArrayGetCount(array)
         var windows: [AXUIElement] = []
         windows.reserveCapacity(count)
@@ -174,14 +174,14 @@ final class WindowLocator {
         if AXUIElementCopyAttributeValue(element, kAXWindowAttribute as CFString, &windowValue) == .success,
            let windowValue,
            CFGetTypeID(windowValue) == AXUIElementGetTypeID() {
-            return unsafeBitCast(windowValue, to: AXUIElement.self)
+            return unsafeDowncast(windowValue, to: AXUIElement.self)
         }
 
         var topLevelValue: CFTypeRef?
         if AXUIElementCopyAttributeValue(element, kAXTopLevelUIElementAttribute as CFString, &topLevelValue) == .success,
            let topLevelValue,
            CFGetTypeID(topLevelValue) == AXUIElementGetTypeID() {
-            return unsafeBitCast(topLevelValue, to: AXUIElement.self)
+            return unsafeDowncast(topLevelValue, to: AXUIElement.self)
         }
 
         return nil
@@ -221,7 +221,7 @@ final class WindowLocator {
               CFGetTypeID(focusedValue) == AXUIElementGetTypeID() else {
             return false
         }
-        let focusedElement = unsafeBitCast(focusedValue, to: AXUIElement.self)
+        let focusedElement = unsafeDowncast(focusedValue, to: AXUIElement.self)
 
         var roleValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(focusedElement, kAXRoleAttribute as CFString, &roleValue) == .success,

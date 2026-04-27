@@ -111,14 +111,15 @@ final class ActiveAppAXObserver {
         let notif = notification as String
         MainActor.assumeIsolated {
             guard let pid = me.currentPID else { return }
+            // kAX*Notification 在 Swift 已桥接为 String，无需再 `as String`
             switch notif {
-            case kAXFocusedUIElementChangedNotification as String:
+            case kAXFocusedUIElementChangedNotification:
                 me.onFocusedElementChanged?(pid)
-            case kAXFocusedWindowChangedNotification as String:
+            case kAXFocusedWindowChangedNotification:
                 me.onFocusedElementChanged?(pid)
                 me.broadcastWindowFrameChanged(pid: pid)
-            case kAXWindowMovedNotification as String,
-                 kAXWindowResizedNotification as String:
+            case kAXWindowMovedNotification,
+                 kAXWindowResizedNotification:
                 me.broadcastWindowFrameChanged(pid: pid)
             default:
                 break
