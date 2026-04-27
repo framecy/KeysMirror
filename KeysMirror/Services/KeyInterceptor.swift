@@ -205,6 +205,14 @@ final class KeyInterceptor {
             
             // 模拟点击
             clickSimulator.leftClick(at: clickPoint, targetApp: frontApp)
+
+            // 结构化触发记录（UI 触发记录 tab 直接渲染）
+            logger.recordTrigger(
+                label: mapping.label,
+                trigger: mapping.displayShortcut,
+                clickPoint: clickPoint,
+                blockInput: mapping.blockInput
+            )
             
             // 根据 blockInput 决定是否拦截按键
             // 如果 blockInput = true，拦截按键不传递到游戏

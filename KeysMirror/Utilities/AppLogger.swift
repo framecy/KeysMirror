@@ -1,6 +1,18 @@
 import Foundation
 import Combine
+import CoreGraphics
 import os.log
+
+/// 触发记录：一次成功的映射触发（mapping 命中 → 派发 leftClick）。
+/// 比 [ACTION] 文本日志更结构化，UI 直接渲染无需解析；100 条 ring buffer。
+struct TriggerRecord: Identifiable, Sendable {
+    let id = UUID()
+    let timestamp: Date
+    let mappingLabel: String
+    let trigger: String          // 触发器人类可读描述，如 "Q" / "⌘ E" / "鼠标 4"
+    let clickPoint: CGPoint
+    let blockInput: Bool         // 是否拦截原始按键
+}
 
 @MainActor
 final class AppLogger: ObservableObject {
@@ -8,6 +20,9 @@ final class AppLogger: ObservableObject {
 
     @Published var logs: [String] = []
     private let maxLogs = 200
+
+    @Published var triggerRecords: [TriggerRecord] = []
+    private let maxTriggerRecords = 100
 
     private let osLog = OSLog(subsystem: "com.keysmirror.KeysMirror", category: "app")
 
@@ -111,8 +126,28 @@ final class AppLogger: ObservableObject {
         handle.write(combined)
     }
 
+    /// 记录一次成功触发；UI 触发记录列表 + 节流后被吃的也可独立记录（暂未启用）。
+    func recordTrigger(label: String, trigger: String, clickPoint: CGPoint, blockInput: Bool) {
+        let record = TriggerRecord(
+            timestamp: Date(),
+            mappingLabel: label,
+            trigger: trigger,
+            clickPoint: clickPoint,
+            blockInput: blockInput
+        )
+        triggerRecords.insert(record, at: 0)
+        if triggerRecords.count > maxTriggerRecords {
+            triggerRecords.removeLast()
+        }
+    }
+
+    func clearTriggerRecords() {
+        triggerRecords.removeAll()
+    }
+
     func clear() {
         logs = []
+        triggerRecords.removeAll()
         let handle = logFileHandle
         writeQueue.async {
             self.pendingBuffer.removeAll()

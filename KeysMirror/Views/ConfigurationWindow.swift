@@ -75,35 +75,38 @@ struct ConfigurationWindow: View {
     @State private var showingAppPicker = false
     @State private var editingMapping: EditingMapping?
     @State private var editingMacro: EditingMacro?
-    @State private var showLogs = false
     @State private var importAlert: ImportAlert?
     @State private var isRecordingGlobalHotkey = false
+    @State private var detailTab: DetailTab = .mappings
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    enum DetailTab: String, CaseIterable, Identifiable {
+        case mappings, macros, triggers, logs
+        var id: String { rawValue }
+        var labelKey: String {
+            switch self {
+            case .mappings: return "映射"
+            case .macros: return "宏"
+            case .triggers: return "触发记录"
+            case .logs: return "运行日志"
+            }
+        }
+        var systemImage: String {
+            switch self {
+            case .mappings: return "keyboard"
+            case .macros: return "list.bullet.rectangle"
+            case .triggers: return "bolt.circle"
+            case .logs: return "doc.text"
+            }
+        }
+    }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("应用配置")
-                        .font(.title2.weight(.semibold))
-                    Spacer()
-                    Menu {
-                        Button("导出全部配置...") { exportAll() }
-                            .disabled(store.profiles.isEmpty)
-                        Divider()
-                        Button("导入并合并...") { triggerImport(.merge) }
-                        Button("导入为新配置...") { triggerImport(.addAsNew) }
-                    } label: {
-                        Image(systemName: "square.and.arrow.up.on.square")
-                    }
-                    .menuStyle(.borderlessButton)
-                    .frame(width: 28)
-                    .help("导入 / 导出配置（合并 = 同 bundleId 覆盖；新建 = 全部追加）")
-
-                    Button("添加应用") {
-                        showingAppPicker = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
+                Text("应用配置")
+                    .font(.title2.weight(.semibold))
+                    .padding(.bottom, 2)
 
                 globalHotkeyRow
                     .padding(10)
@@ -133,10 +136,12 @@ struct ConfigurationWindow: View {
                         }
                         .onDelete(perform: deleteProfiles)
                     }
+                    .listStyle(.sidebar)
                 }
             }
-            .padding(20)
-            .frame(minWidth: 260)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
         } detail: {
             VStack(alignment: .leading, spacing: 16) {
                 if !permissionChecker.isAccessibilityGranted {
@@ -153,7 +158,32 @@ struct ConfigurationWindow: View {
                     )
                 }
             }
-            .padding(24)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 18)
+        }
+        .navigationSplitViewStyle(.balanced)
+        // 工具栏放窗口级，不随 sidebar 开关移位；导入/导出与「添加应用」始终可见。
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button("导出全部配置...") { exportAll() }
+                        .disabled(store.profiles.isEmpty)
+                    Divider()
+                    Button("导入并合并...") { triggerImport(.merge) }
+                    Button("导入为新配置...") { triggerImport(.addAsNew) }
+                } label: {
+                    Label("导入 / 导出", systemImage: "square.and.arrow.up.on.square")
+                }
+                .help("导入 / 导出配置（合并 = 同 bundleId 覆盖；新建 = 全部追加）")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showingAppPicker = true
+                } label: {
+                    Label("添加应用", systemImage: "plus")
+                }
+                .help("从正在运行的应用中选一个开始配置")
+            }
         }
         .sheet(isPresented: $showingAppPicker) {
             AppPickerView { application in
@@ -264,51 +294,58 @@ struct ConfigurationWindow: View {
 
     @ViewBuilder
     private func profileDetail(_ profile: AppProfile) -> some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(profile.appName)
-                    .font(.title.weight(.semibold))
-                Text(profile.bundleIdentifier)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 8) {
-                Toggle("启用此配置", isOn: Binding(
-                    get: { profile.isEnabled },
-                    set: { newValue in
-                        var updated = profile
-                        updated.isEnabled = newValue
-                        store.updateProfile(updated)
-                    }
-                ))
-                .toggleStyle(.switch)
-
-                HStack(spacing: 8) {
-                    Button {
-                        exportProfile(profile)
-                    } label: {
-                        Label("导出", systemImage: "square.and.arrow.up")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-
-                    Button(role: .destructive) {
-                        store.deleteProfile(profile)
-                        selectedProfileID = store.profiles.first?.id
-                    } label: {
-                        Label("删除此配置", systemImage: "trash")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
+        VStack(alignment: .leading, spacing: 14) {
+            profileHeader(profile)
+            overlayCard(profile)
+            tabPicker(profile)
+            tabContent(profile)
         }
+    }
 
-        VStack(alignment: .leading, spacing: 8) {
-            Toggle("显示快捷键指示器", isOn: Binding(
+    private func profileHeader(_ profile: AppProfile) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(profile.appName)
+                    .font(.title2.weight(.semibold))
+                Text(profile.bundleIdentifier)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+            }
+            Spacer(minLength: 12)
+            Toggle("启用", isOn: Binding(
+                get: { profile.isEnabled },
+                set: { newValue in
+                    var updated = profile
+                    updated.isEnabled = newValue
+                    store.updateProfile(updated)
+                }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            Button {
+                exportProfile(profile)
+            } label: {
+                Label("导出", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            Button(role: .destructive) {
+                store.deleteProfile(profile)
+                selectedProfileID = store.profiles.first?.id
+            } label: {
+                Label("删除", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(14)
+        .background(Color.gray.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func overlayCard(_ profile: AppProfile) -> some View {
+        HStack(spacing: 14) {
+            Toggle("显示位置指示器", isOn: Binding(
                 get: { profile.showOverlay },
                 set: { newValue in
                     var updated = profile
@@ -317,10 +354,15 @@ struct ConfigurationWindow: View {
                 }
             ))
             .toggleStyle(.switch)
+            .controlSize(.small)
+            .layoutPriority(1)
 
-            Text("指示器透明度: \(Int(profile.overlayOpacity * 100))%")
-                .font(.subheadline)
+            Spacer(minLength: 8)
+
+            Text("透明度 \(Int(profile.overlayOpacity * 100))%")
+                .font(.caption)
                 .foregroundStyle(.secondary)
+                .monospacedDigit()
             Slider(value: Binding(
                 get: { profile.overlayOpacity },
                 set: { newValue in
@@ -330,139 +372,239 @@ struct ConfigurationWindow: View {
                 }
             ), in: 0...1)
             .tint(.accentColor)
+            .controlSize(.small)
+            .frame(maxWidth: 220)
+            .disabled(!profile.showOverlay)
+            .opacity(profile.showOverlay ? 1.0 : 0.5)
         }
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.gray.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+    }
 
-        HStack {
-            Text("映射列表")
-                .font(.title3.weight(.semibold))
-            Spacer()
-            Button("新建映射") {
-                editingMapping = EditingMapping(profile: profile, mapping: nil)
+    private func tabPicker(_ profile: AppProfile) -> some View {
+        Picker("", selection: $detailTab) {
+            ForEach(DetailTab.allCases) { tab in
+                Text(tabLabel(tab, profile: profile)).tag(tab)
             }
-            .buttonStyle(.borderedProminent)
         }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
 
-        MappingListView(
-            profile: profile,
-            onEdit: { mapping in
-                editingMapping = EditingMapping(profile: profile, mapping: mapping)
-            },
-            onDelete: { mapping in
-                store.deleteMapping(mapping, from: profile)
-            },
-            onToggleEnabled: { mapping in
-                var updated = mapping
-                updated.isEnabled.toggle()
-                store.updateMapping(updated, in: profile)
-            }
-        )
-
-        Divider()
-            .padding(.vertical, 8)
-
-        HStack {
-            Text("宏 (Macros)")
-                .font(.title3.weight(.semibold))
-            Spacer()
-            Button("新建宏") {
-                editingMacro = EditingMacro(profile: profile, macro: nil)
-            }
-            .buttonStyle(.borderedProminent)
+    private func tabLabel(_ tab: DetailTab, profile: AppProfile) -> String {
+        switch tab {
+        case .mappings: return "映射 (\(profile.mappings.count))"
+        case .macros:   return "宏 (\(profile.macros.count))"
+        case .triggers: return "触发记录 (\(logger.triggerRecords.count))"
+        case .logs:     return "运行日志"
         }
+    }
 
-        MacroListView(
-            profile: profile,
-            runningMacroId: macroRunner.runningMacroId,
-            onEdit: { macro in
-                editingMacro = EditingMacro(profile: profile, macro: macro)
-            },
-            onDelete: { macro in
-                if macroRunner.runningMacroId == macro.id {
-                    macroRunner.stop(reason: "用户删除宏")
-                }
-                store.deleteMacro(macro, from: profile)
-            },
-            onToggleEnabled: { macro in
-                if macroRunner.runningMacroId == macro.id && macro.isEnabled {
-                    macroRunner.stop(reason: "用户禁用宏")
-                }
-                var updated = macro
-                updated.isEnabled.toggle()
-                store.updateMacro(updated, in: profile)
-            }
-        )
+    @ViewBuilder
+    private func tabContent(_ profile: AppProfile) -> some View {
+        switch detailTab {
+        case .mappings: mappingsTab(profile)
+        case .macros:   macrosTab(profile)
+        case .triggers: triggersTab
+        case .logs:     logsTab
+        }
+    }
 
-        Divider()
-            .padding(.vertical, 8)
-
-        VStack(alignment: .leading, spacing: 8) {
+    @ViewBuilder
+    private func mappingsTab(_ profile: AppProfile) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
+                Text("按键 → 点击的固定映射")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { showLogs.toggle() }
+                    editingMapping = EditingMapping(profile: profile, mapping: nil)
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: showLogs ? "chevron.down" : "chevron.right")
-                            .font(.caption.weight(.semibold))
-                        Text("运行日志")
-                            .font(.headline)
+                    Label("新建映射", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+            MappingListView(
+                profile: profile,
+                onEdit: { mapping in
+                    editingMapping = EditingMapping(profile: profile, mapping: mapping)
+                },
+                onDelete: { mapping in
+                    store.deleteMapping(mapping, from: profile)
+                },
+                onToggleEnabled: { mapping in
+                    var updated = mapping
+                    updated.isEnabled.toggle()
+                    store.updateMapping(updated, in: profile)
+                }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func macrosTab(_ profile: AppProfile) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("一个触发键执行多步点击")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("每步独立延迟 / 循环 N 次或无限 / 再按触发键即停")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                Button {
+                    editingMacro = EditingMacro(profile: profile, macro: nil)
+                } label: {
+                    Label("新建宏", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+            MacroListView(
+                profile: profile,
+                runningMacroId: macroRunner.runningMacroId,
+                onEdit: { macro in
+                    editingMacro = EditingMacro(profile: profile, macro: macro)
+                },
+                onDelete: { macro in
+                    if macroRunner.runningMacroId == macro.id {
+                        macroRunner.stop(reason: "用户删除宏")
                     }
+                    store.deleteMacro(macro, from: profile)
+                },
+                onToggleEnabled: { macro in
+                    if macroRunner.runningMacroId == macro.id && macro.isEnabled {
+                        macroRunner.stop(reason: "用户禁用宏")
+                    }
+                    var updated = macro
+                    updated.isEnabled.toggle()
+                    store.updateMacro(updated, in: profile)
+                }
+            )
+        }
+    }
+
+    private var triggersTab: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("最近 100 次成功触发（按时间倒序）")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("清空") {
+                    logger.clearTriggerRecords()
                 }
                 .buttonStyle(.plain)
-
-                Spacer()
-
-                if showLogs {
-                    Button("导出") {
-                        exportLogs()
+                .foregroundStyle(.secondary)
+                .font(.subheadline)
+                .disabled(logger.triggerRecords.isEmpty)
+            }
+            if logger.triggerRecords.isEmpty {
+                EmptyStateView(
+                    title: "还没有触发记录",
+                    systemImage: "bolt.circle",
+                    description: "在目标应用里按下已配置的触发键，点击就会出现在这里。"
+                )
+            } else {
+                List(logger.triggerRecords) { record in
+                    HStack(spacing: 12) {
+                        Text(Self.timeFormatter.string(from: record.timestamp))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 88, alignment: .leading)
+                        Text(record.trigger)
+                            .font(.system(.body, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+                        Image(systemName: "arrow.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Text(record.mappingLabel)
+                            .font(.body)
+                        Spacer()
+                        Text("(\(Int(record.clickPoint.x)), \(Int(record.clickPoint.y)))")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        if record.blockInput {
+                            Image(systemName: "shield.lefthalf.filled")
+                                .font(.caption)
+                                .foregroundStyle(.blue)
+                                .help("已拦截原始按键")
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .font(.subheadline)
-
-                    Button("在 Finder 中显示") {
-                        NSWorkspace.shared.activateFileViewerSelecting([logger.currentLogFileURL])
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .font(.subheadline)
-
-                    Button("清空") {
-                        logger.clear()
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .font(.subheadline)
+                    .padding(.vertical, 1)
                 }
+                .listStyle(.inset)
+            }
+        }
+    }
+
+    private var logsTab: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("INFO / WARN / ERROR / TRACE / ACTION 全量日志")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("导出") {
+                    exportLogs()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .font(.subheadline)
+
+                Button("在 Finder 中显示") {
+                    NSWorkspace.shared.activateFileViewerSelecting([logger.currentLogFileURL])
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .font(.subheadline)
+
+                Button("清空") {
+                    logger.clear()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .font(.subheadline)
             }
 
-            if showLogs {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(logger.logs.enumerated()), id: \.offset) { index, log in
-                                Text(log)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(
-                                        log.contains("[ERROR]") ? .red :
-                                        log.contains("[WARN]")  ? .orange : .secondary
-                                    )
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .id(index)
-                            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(logger.logs.enumerated()), id: \.offset) { index, log in
+                            Text(log)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(
+                                    log.contains("[ERROR]") ? .red :
+                                    log.contains("[WARN]")  ? .orange : .secondary
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .id(index)
                         }
-                        .padding(8)
                     }
-                    .frame(height: 150)
-                    .background(Color.black.opacity(0.05))
-                    .cornerRadius(8)
-                    .onChange(of: logger.logs.count) { _ in
-                        proxy.scrollTo(0)
-                    }
+                    .padding(8)
+                }
+                .frame(maxHeight: .infinity)
+                .background(Color.black.opacity(0.05))
+                .cornerRadius(8)
+                .onChange(of: logger.logs.count) { _ in
+                    proxy.scrollTo(0)
                 }
             }
         }
     }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss.SSS"
+        return f
+    }()
 
     private func deleteProfiles(at offsets: IndexSet) {
         let profiles = offsets.compactMap { index in
