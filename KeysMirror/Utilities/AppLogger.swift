@@ -3,15 +3,16 @@ import Combine
 import CoreGraphics
 import os.log
 
-/// 触发记录：一次成功的映射触发（mapping 命中 → 派发 leftClick）。
+/// 触发记录：一次映射命中（成功派发 leftClick，或被节流跳过）。
 /// 比 [ACTION] 文本日志更结构化，UI 直接渲染无需解析；100 条 ring buffer。
 struct TriggerRecord: Identifiable, Sendable {
     let id = UUID()
     let timestamp: Date
     let mappingLabel: String
     let trigger: String          // 触发器人类可读描述，如 "Q" / "⌘ E" / "鼠标 4"
-    let clickPoint: CGPoint
+    let clickPoint: CGPoint      // throttled=true 时为 .zero（实际没点）
     let blockInput: Bool         // 是否拦截原始按键
+    let throttled: Bool          // 是否因 35ms 节流被丢弃
 }
 
 @MainActor
@@ -126,14 +127,16 @@ final class AppLogger: ObservableObject {
         handle.write(combined)
     }
 
-    /// 记录一次成功触发；UI 触发记录列表 + 节流后被吃的也可独立记录（暂未启用）。
-    func recordTrigger(label: String, trigger: String, clickPoint: CGPoint, blockInput: Bool) {
+    /// 记录一次触发命中。`throttled = true` 表示被 35ms 节流吞掉、未派发点击；
+    /// 此时 `clickPoint` 应传 `.zero`（约定见 TriggerRecord 字段注释）。
+    func recordTrigger(label: String, trigger: String, clickPoint: CGPoint, blockInput: Bool, throttled: Bool = false) {
         let record = TriggerRecord(
             timestamp: Date(),
             mappingLabel: label,
             trigger: trigger,
             clickPoint: clickPoint,
-            blockInput: blockInput
+            blockInput: blockInput,
+            throttled: throttled
         )
         triggerRecords.insert(record, at: 0)
         if triggerRecords.count > maxTriggerRecords {

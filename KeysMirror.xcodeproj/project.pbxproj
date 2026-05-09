@@ -17,6 +17,7 @@
 		25705A71C7E1EB03206421A8 /* GlobalHotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EEE941B5B02460B17F189F4 /* GlobalHotkeyManager.swift */; };
 		3329784F15071F991B6A2018 /* MacroAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54DC6991F012C306CEE3415F /* MacroAction.swift */; };
 		343875D677C5D454FDDD1562 /* PermissionHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F5B0BA1F849ECBDDCF7D401 /* PermissionHelper.swift */; };
+		3724D0BAB9D833B3D0973448 /* AXUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB545674C5C4BC35D8C87595 /* AXUtilities.swift */; };
 		44A5A0D43AA7EE8EF65A4EF6 /* OverlayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67784B299BF04C812D7B49DF /* OverlayController.swift */; };
 		4582C72E4AFCB4F63E5B0C15 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B38CF155BFE4B2A42922296 /* AppDelegate.swift */; };
 		5A99087D6015195B7375860A /* MacroRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88066674B3984317FB7A0126 /* MacroRunnerTests.swift */; };
@@ -103,6 +104,7 @@
 		CED6175B47061D770C61473A /* CoordinateConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinateConverterTests.swift; sourceTree = "<group>"; };
 		D5A1A5209AEE7D51C7EF49E2 /* TriggerRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerRecorder.swift; sourceTree = "<group>"; };
 		DCE1ACD7AD66234A9B57AD71 /* ClickSimulatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickSimulatorTests.swift; sourceTree = "<group>"; };
+		EB545674C5C4BC35D8C87595 /* AXUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXUtilities.swift; sourceTree = "<group>"; };
 		EEC338B1B19280676438D28B /* MacroActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacroActionTests.swift; sourceTree = "<group>"; };
 		F04546E9818558BC195EB588 /* TriggerThrottleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerThrottleTests.swift; sourceTree = "<group>"; };
 		F0ACDECB9B55BEFD48527422 /* TriggerRecordBufferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TriggerRecordBufferTests.swift; sourceTree = "<group>"; };
@@ -211,6 +213,7 @@
 			children = (
 				7C3032D0E1F5637E741C758C /* AppResolver.swift */,
 				BEEDA31AC89EDA801B0F471E /* AXObservers.swift */,
+				EB545674C5C4BC35D8C87595 /* AXUtilities.swift */,
 				B41D76167B010AD4C817C515 /* ClickSimulator.swift */,
 				3EEE941B5B02460B17F189F4 /* GlobalHotkeyManager.swift */,
 				AE2D20A5F48DD445F190EC13 /* KeyInterceptor.swift */,
@@ -347,6 +350,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9D59649BD806B373E144DF1A /* AXObservers.swift in Sources */,
+				3724D0BAB9D833B3D0973448 /* AXUtilities.swift in Sources */,
 				4582C72E4AFCB4F63E5B0C15 /* AppDelegate.swift in Sources */,
 				E2D162DEB029A467CF668136 /* AppLogger.swift in Sources */,
 				CD4E59757E9494236E520640 /* AppPickerView.swift in Sources */,

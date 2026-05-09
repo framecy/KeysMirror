@@ -10,12 +10,24 @@ final class WindowLocator {
     private struct FocusState {
         let bundleId: String
         let isTextInput: Bool
+        let timestamp: TimeInterval
     }
     private var observedFocus: FocusState?
 
     /// 焦点窗口 frame 缓存。命中后零 AX IPC；窗口移动 / 缩放 / 切前台 app 时由
     /// `.focusedWindowFrameChanged` 广播失效，同步性靠 AXObserver 推送保证。
-    private var cachedFrame: (bundleId: String, frame: CGRect)?
+    private struct FrameCacheEntry {
+        let bundleId: String
+        let frame: CGRect
+        let timestamp: TimeInterval
+    }
+    private var cachedFrame: FrameCacheEntry?
+
+    /// 兜底 TTL：部分 app（iOS-on-Mac / 自绘 Metal 游戏）AX 通知注册成功但实际不推送，
+    /// 缓存可能永久卡死——focus 卡在 isTextInput=true 让所有 keyDown 直通；frame 卡在
+    /// 旧值让点击落到窗口外被安全网拒绝。TTL 限制 stale 时长，到期后 keyDown 路径自费
+    /// 一次 AX IPC 重新探测并刷新缓存，正常 app 走 observer 推送几乎不进 TTL 分支。
+    private static let cacheTTL: TimeInterval = 5.0
 
     /// 测试接缝：注入 frame 查询。生产路径走真正的 AX 调用；单测可注入桩。
     var frameProviderForTesting: ((String) -> CGRect?)?
@@ -36,14 +48,17 @@ final class WindowLocator {
     }
 
     func focusedWindowFrame(for bundleIdentifier: String) -> CGRect? {
-        if let cache = cachedFrame, cache.bundleId == bundleIdentifier {
+        let now = Date.timeIntervalSinceReferenceDate
+        if let cache = cachedFrame,
+           cache.bundleId == bundleIdentifier,
+           now - cache.timestamp < Self.cacheTTL {
             return cache.frame
         }
         let query = frameProviderForTesting ?? { [weak self] bid in self?.queryFocusedWindowFrame(for: bid) }
         guard let frame = query(bundleIdentifier) else {
             return nil
         }
-        cachedFrame = (bundleIdentifier, frame)
+        cachedFrame = FrameCacheEntry(bundleId: bundleIdentifier, frame: frame, timestamp: now)
         return frame
     }
 
@@ -57,7 +72,7 @@ final class WindowLocator {
             return nil
         }
 
-        let applicationElement = AXUIElementCreateApplication(app.processIdentifier)
+        let applicationElement = AXUtilities.makeAppElement(pid: app.processIdentifier)
 
         var focusedWindowValue: CFTypeRef?
         let focusedResult = AXUIElementCopyAttributeValue(applicationElement, kAXFocusedWindowAttribute as CFString, &focusedWindowValue)
@@ -86,7 +101,7 @@ final class WindowLocator {
         }
 
         let axPoint = CoordinateConverter.appKitScreenPointToAX(screenPoint)
-        let systemWideElement = AXUIElementCreateSystemWide()
+        let systemWideElement = AXUtilities.makeSystemWideElement()
         var elementAtPoint: AXUIElement?
         let hitResult = AXUIElementCopyElementAtPosition(systemWideElement, Float(axPoint.x), Float(axPoint.y), &elementAtPoint)
 
@@ -100,7 +115,7 @@ final class WindowLocator {
             return frame
         }
 
-        let applicationElement = AXUIElementCreateApplication(app.processIdentifier)
+        let applicationElement = AXUtilities.makeAppElement(pid: app.processIdentifier)
         var windowsValue: CFTypeRef?
         let windowsResult = AXUIElementCopyAttributeValue(applicationElement, kAXWindowsAttribute as CFString, &windowsValue)
 
@@ -188,12 +203,18 @@ final class WindowLocator {
     }
 
     /// 返回 true 表示目标应用当前焦点在文字输入控件上（应暂停键盘映射）。
-    /// 优先读取 AXObserver 维护的缓存，缓存未命中（启动竞态 / observer 注册失败）时退化为现场查询。
+    /// 优先读取 AXObserver 维护的缓存；缓存未命中或超过 TTL 时现场查询并写回缓存——
+    /// 后者覆盖「observer 注册成功但不推送」的 app 让缓存永久卡 true 的情况。
     func isFocusedElementTextInput(for bundleIdentifier: String) -> Bool {
-        if let state = observedFocus, state.bundleId == bundleIdentifier {
+        let now = Date.timeIntervalSinceReferenceDate
+        if let state = observedFocus,
+           state.bundleId == bundleIdentifier,
+           now - state.timestamp < Self.cacheTTL {
             return state.isTextInput
         }
-        return queryFocusedTextInput(for: bundleIdentifier)
+        let fresh = queryFocusedTextInput(for: bundleIdentifier)
+        observedFocus = FocusState(bundleId: bundleIdentifier, isTextInput: fresh, timestamp: now)
+        return fresh
     }
 
     private func refreshFocusState(pid: pid_t) {
@@ -204,7 +225,8 @@ final class WindowLocator {
         }
         observedFocus = FocusState(
             bundleId: bundleId,
-            isTextInput: queryFocusedTextInput(for: bundleId)
+            isTextInput: queryFocusedTextInput(for: bundleId),
+            timestamp: Date.timeIntervalSinceReferenceDate
         )
     }
 
@@ -213,7 +235,7 @@ final class WindowLocator {
                 .first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
             return false
         }
-        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        let appElement = AXUtilities.makeAppElement(pid: app.processIdentifier)
 
         var focusedValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedValue) == .success,

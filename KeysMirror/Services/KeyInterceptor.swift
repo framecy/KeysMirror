@@ -170,6 +170,13 @@ final class KeyInterceptor {
             // 节流：同 mapping 35ms 内重复触发立即丢弃。blockInput 仍按映射设置生效，
             // 否则用户连按时游戏会同时收到原始按键，破坏拦截语义。
             if !triggerThrottle.shouldFire(mapping.id, now: Date.timeIntervalSinceReferenceDate) {
+                logger.recordTrigger(
+                    label: mapping.label,
+                    trigger: mapping.displayShortcut,
+                    clickPoint: .zero,
+                    blockInput: mapping.blockInput,
+                    throttled: true
+                )
                 return mapping.blockInput ? nil : Unmanaged.passRetained(event)
             }
 
@@ -278,15 +285,31 @@ struct TriggerThrottle {
     /// 节流窗口，单位秒。35ms = 60fps 游戏 ~2 帧，留够 UI 反应时间。
     var intervalSeconds: TimeInterval = 0.035
 
+    /// 容量软上限：超过则在下次 shouldFire 时清理 60s 未活动的 entry。
+    /// 防止长会话中删除的 mapping ID 永久占用内存（每条 ~24 字节，慢但无界）。
+    var maxEntries: Int = 256
+    var pruneOlderThan: TimeInterval = 60.0
+
     private var lastFire: [UUID: TimeInterval] = [:]
+
+    var entryCount: Int { lastFire.count }
 
     /// 返回 true 表示允许触发并已记账；false 表示节流命中应丢弃。
     mutating func shouldFire(_ id: UUID, now: TimeInterval) -> Bool {
+        if lastFire.count > maxEntries {
+            prune(now: now)
+        }
         if let last = lastFire[id], now - last < intervalSeconds {
             return false
         }
         lastFire[id] = now
         return true
+    }
+
+    /// 移除所有「now - lastFire > pruneOlderThan」的 entry。
+    /// 60s 没活动的 mapping 通常已被删除或暂时不用，重新触发时再 alloc 即可。
+    mutating func prune(now: TimeInterval) {
+        lastFire = lastFire.filter { now - $0.value < pruneOlderThan }
     }
 
     /// 测试钩子：清空全部记录。

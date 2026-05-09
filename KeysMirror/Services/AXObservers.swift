@@ -59,7 +59,7 @@ final class ActiveAppAXObserver {
         guard pid != currentPID else { return }
         teardown()
 
-        let element = AXUIElementCreateApplication(pid)
+        let element = AXUtilities.makeAppElement(pid: pid)
         var newObserver: AXObserver?
         let result = AXObserverCreate(pid, Self.callback, &newObserver)
         guard result == .success, let newObserver else {
@@ -74,11 +74,28 @@ final class ActiveAppAXObserver {
             kAXWindowMovedNotification as String,
             kAXWindowResizedNotification as String,
         ]
+        // 收集失败、聚合成一行——避免「同一个 app 一次切前台刷 4 行 WARN」的旧噪声
+        var failures: [(name: String, code: AXError)] = []
         for name in notifications {
             let addResult = AXObserverAddNotification(newObserver, element, name as CFString, userData)
             if addResult != .success && addResult != .notificationAlreadyRegistered {
-                AppLogger.shared.log("AXObserverAddNotification 失败 [\(name)] pid=\(pid) code=\(addResult.rawValue)", type: "WARN")
+                failures.append((name, addResult))
             }
+        }
+        if !failures.isEmpty {
+            // 全是「app 不支持」的预期失败 → 降级为 TRACE；混入真错才 WARN
+            let allExpected = failures.allSatisfy { AXUtilities.isExpectedNonSupport($0.code) }
+            let codeList = Set(failures.map { Int($0.code.rawValue) })
+                .map(String.init)
+                .sorted()
+                .joined(separator: ",")
+            let nameList = failures.map { $0.name.replacingOccurrences(of: "AX", with: "") }
+                .joined(separator: ",")
+            let suffix = allExpected ? " (app 不主动推送，将走轮询/缓存)" : ""
+            AppLogger.shared.log(
+                "AX 通知部分不可用 pid=\(pid) [\(nameList)] code=\(codeList)\(suffix)",
+                type: allExpected ? "TRACE" : "WARN"
+            )
         }
 
         CFRunLoopAddSource(
