@@ -27,7 +27,13 @@ final class WindowLocator {
     /// 缓存可能永久卡死——focus 卡在 isTextInput=true 让所有 keyDown 直通；frame 卡在
     /// 旧值让点击落到窗口外被安全网拒绝。TTL 限制 stale 时长，到期后 keyDown 路径自费
     /// 一次 AX IPC 重新探测并刷新缓存，正常 app 走 observer 推送几乎不进 TTL 分支。
-    private static let cacheTTL: TimeInterval = 5.0
+    ///
+    /// 注意：AX 查询在主线程同步执行，TTL 太短会导致每隔几秒就阻塞主线程，
+    /// 期间鼠标光标无法响应，用户体验为「鼠标失灵」。
+    /// - focusCacheTTL：15s，覆盖 silent observer 的 isTextInput 卡住场景，频率可接受
+    /// - frameCacheTTL：60s，游戏窗口几乎不移动，observer 推送会提前失效缓存
+    private static let focusCacheTTL: TimeInterval = 15.0
+    private static let frameCacheTTL: TimeInterval = 60.0
 
     /// 测试接缝：注入 frame 查询。生产路径走真正的 AX 调用；单测可注入桩。
     var frameProviderForTesting: ((String) -> CGRect?)?
@@ -51,7 +57,7 @@ final class WindowLocator {
         let now = Date.timeIntervalSinceReferenceDate
         if let cache = cachedFrame,
            cache.bundleId == bundleIdentifier,
-           now - cache.timestamp < Self.cacheTTL {
+           now - cache.timestamp < Self.frameCacheTTL {
             return cache.frame
         }
         let query = frameProviderForTesting ?? { [weak self] bid in self?.queryFocusedWindowFrame(for: bid) }
@@ -209,7 +215,7 @@ final class WindowLocator {
         let now = Date.timeIntervalSinceReferenceDate
         if let state = observedFocus,
            state.bundleId == bundleIdentifier,
-           now - state.timestamp < Self.cacheTTL {
+           now - state.timestamp < Self.focusCacheTTL {
             return state.isTextInput
         }
         let fresh = queryFocusedTextInput(for: bundleIdentifier)

@@ -57,12 +57,15 @@ final class ClickSimulator {
             // Window Server 会依据 mouseCursorPosition 更新光标，需要冻结+还原。
             // 顺序很关键：必须先 warp 回原位再 re-associate，否则会有一帧光标停在
             // click 点导致视觉抖动，连击时累积成「光标渐渐漂向 click 点」的怪象。
+            // defer 保证即便此后发生意外（如崩溃前的 Swift trap）也能恢复光标关联。
             let savedPos = cursorOps.currentLocation()
             cursorOps.associate(false)
+            defer {
+                cursorOps.warp(savedPos)
+                cursorOps.associate(true)
+            }
             cursorOps.post(down)
             cursorOps.post(up)
-            cursorOps.warp(savedPos)
-            cursorOps.associate(true)
         }
     }
 

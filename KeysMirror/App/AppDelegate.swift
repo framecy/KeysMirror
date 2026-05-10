@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -11,6 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let globalHotkey = GlobalHotkeyManager.shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 防御：若上次运行在 CGAssociateMouseAndMouseCursorPosition(0) 后崩溃，
+        // 光标会永久冻结。启动时强制恢复关联，让鼠标立刻可用。
+        CGAssociateMouseAndMouseCursorPosition(1)
+
         statusBarController.configure(
             onOpenConfiguration: { [weak self] in
                 self?.showConfigurationWindow()
