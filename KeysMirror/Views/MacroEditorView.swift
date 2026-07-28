@@ -191,6 +191,7 @@ private struct StepRow: View {
                 }
 
                 positionDetail
+                driftDetail
             }
 
             VStack(spacing: 2) {
@@ -207,6 +208,30 @@ private struct StepRow: View {
         }
         .padding(8)
         .background(Color.gray.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var driftDetail: some View {
+        HStack(spacing: 6) {
+            Toggle("区域漂移", isOn: Binding(
+                get: { step.driftPercent > 0 },
+                set: { step.driftPercent = $0 ? (step.driftPercent > 0 ? step.driftPercent : 1) : 0 }
+            ))
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .help("每次点击在录制点周围随机漂移，避免每次点在完全相同的像素上；适合 PlayCover 自动化连点")
+
+            if step.driftPercent > 0 {
+                TextField("", value: $step.driftPercent, format: .number)
+                    .frame(width: 46)
+                    .textFieldStyle(.roundedBorder)
+                Stepper("", value: $step.driftPercent, in: 0.1...50, step: 0.5)
+                    .labelsHidden()
+                Text("% 窗口尺寸")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
     }
 
     @ViewBuilder
@@ -265,9 +290,11 @@ struct EditableStep: Identifiable, Hashable {
     var referencedMappingId: UUID?
     var inlinePoint: CGPoint?
     var inlineReferenceSize: CGSize?
+    var driftPercent: Double
 
     init(id: UUID = UUID(), step: MacroStep? = nil) {
         self.id = step?.id ?? id
+        self.driftPercent = step?.driftPercent ?? 0
         let delaySeconds = step?.delaySeconds ?? 0
         // 默认以秒展示；超过 60 秒且能整除则以分展示，方便阅读
         if delaySeconds > 0 && delaySeconds.truncatingRemainder(dividingBy: 60) == 0 && delaySeconds >= 60 {
@@ -315,7 +342,12 @@ struct EditableStep: Identifiable, Hashable {
                 referenceHeight: inlineReferenceSize?.height
             )
         }
-        return MacroStep(id: id, delaySeconds: max(0, delaySecondsValue), position: pos)
+        return MacroStep(
+            id: id,
+            delaySeconds: max(0, delaySecondsValue),
+            position: pos,
+            driftPercent: min(max(0, driftPercent), 50)
+        )
     }
 }
 

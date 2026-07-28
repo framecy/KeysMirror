@@ -8,9 +8,11 @@ struct ProfileExport: Codable {
     let appVersion: String
     let profiles: [AppProfile]
 
-    /// v2: AppProfile 新增 `macros` 字段（v1.5）。v1 文件向前兼容——AppProfile.init(from:)
-    /// 缺字段时回退到 `macros == []`，所以可以直接读旧文件。
-    static let currentSchemaVersion: Int = 2
+    /// v2: AppProfile 新增 `macros` 字段（v1.5）。
+    /// v3: MacroStep 新增 `driftPercent` 字段（v1.7，区域漂移）。
+    /// 低版本文件全部向前兼容——各 init(from:) 对缺失字段用 decodeIfPresent 回退默认值
+    /// （macros == []，driftPercent == 0），可直接读旧文件。
+    static let currentSchemaVersion: Int = 3
 
     init(profiles: [AppProfile]) {
         self.schemaVersion = Self.currentSchemaVersion

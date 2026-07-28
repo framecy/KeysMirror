@@ -45,6 +45,29 @@ final class MacroActionTests: XCTestCase {
         }
     }
 
+    func testDriftPercentSurvivesCodableRoundTrip() throws {
+        let macro = MacroAction(
+            label: "漂移连点",
+            repeatCount: 0,
+            steps: [
+                MacroStep(delaySeconds: 0.3, position: .inline(relativeX: 960, relativeY: 540, referenceWidth: 1920, referenceHeight: 1080), driftPercent: 1.5)
+            ]
+        )
+        let decoded = try JSONDecoder().decode(MacroAction.self, from: JSONEncoder().encode(macro))
+        XCTAssertEqual(decoded, macro)
+        XCTAssertEqual(decoded.steps[0].driftPercent, 1.5, accuracy: 0.0001)
+    }
+
+    /// 旧配置（v1.6 及以前）的 MacroStep 没有 driftPercent 字段，必须解码为 0（行为不变）。
+    func testLegacyStepWithoutDriftDecodesToZero() throws {
+        let json = """
+        { "id": "\(UUID().uuidString)", "delaySeconds": 1,
+          "position": { "type": "inline", "relativeX": 10, "relativeY": 20 } }
+        """
+        let step = try JSONDecoder().decode(MacroStep.self, from: Data(json.utf8))
+        XCTAssertEqual(step.driftPercent, 0, "缺 driftPercent 字段的旧数据必须回退为 0（精确点击）")
+    }
+
     func testRepeatCountZeroIsInfiniteSummary() {
         let macro = MacroAction(label: "无限", repeatCount: 0, steps: [
             MacroStep(position: .inline(relativeX: 0, relativeY: 0, referenceWidth: nil, referenceHeight: nil))

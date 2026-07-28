@@ -23,7 +23,8 @@ final class ConfigurationWindowController {
                 defer: false
             )
             window.isReleasedWhenClosed = false
-            window.title = "KeysMirror 配置"
+            let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+            window.title = "KeysMirror 配置 v\(version)"
             window.center()
             window.contentView = NSHostingView(rootView: rootView)
 

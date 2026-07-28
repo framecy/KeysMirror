@@ -47,7 +47,8 @@ final class StatusBarController {
         }
 
         menu.removeAllItems()
-        let titleItem = NSMenuItem(title: "KeysMirror", action: nil, keyEquivalent: "")
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let titleItem = NSMenuItem(title: "KeysMirror v\(version)", action: nil, keyEquivalent: "")
         titleItem.isEnabled = false
         menu.addItem(titleItem)
         menu.addItem(.separator())

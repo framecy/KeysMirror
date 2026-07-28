@@ -100,6 +100,6 @@ final class ConfigurationWindowControllerTests: XCTestCase {
     }
 
     private func findConfigurationWindow() -> NSWindow? {
-        NSApp.windows.first { $0.title == windowTitle }
+        NSApp.windows.first { $0.title.hasPrefix("KeysMirror 配置") }
     }
 }

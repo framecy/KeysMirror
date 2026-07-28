@@ -193,7 +193,17 @@ final class ClickSimulator {
             if let requiresIPhoneOS = plist["LSRequiresIPhoneOS"] as? Bool {
                 return !requiresIPhoneOS
             }
-            // 读到了 plist 但没有该键 → 按 macOS 原生处理
+            // 后备判定：部分 PlayCover 游戏（如阴阳师 com.netease.onmyoji）
+            // 不含 LSRequiresIPhoneOS，但 DTPlatformName / UIDeviceFamily 仍保留了
+            // iOS 特征。不额外检查会误走 postToPid 导致点击完全无响应。
+            if let platform = plist["DTPlatformName"] as? String,
+               platform.lowercased().contains("iphoneos") {
+                return false
+            }
+            if let deviceFamily = plist["UIDeviceFamily"] as? [Any], !deviceFamily.isEmpty {
+                return false
+            }
+            // 读到了 plist 且无任何 iOS 特征 → 按 macOS 原生处理
             return true
         }
 

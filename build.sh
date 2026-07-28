@@ -20,7 +20,7 @@ echo "▶ Stripping xattrs..."
 xattr -cr "$APP"
 
 echo "▶ Signing..."
-/usr/bin/codesign --force --sign - --timestamp=none --generate-entitlement-der "$APP"
+/usr/bin/codesign --force --sign "KeysMirror Dev" --timestamp=none --generate-entitlement-der "$APP"
 
 echo "▶ Launching..."
 pkill -x KeysMirror 2>/dev/null || true

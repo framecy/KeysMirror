@@ -89,11 +89,17 @@ struct MacroStep: Codable, Identifiable, Hashable {
     /// 本步触发前等待的秒数。第一步通常设为 0 让宏立即开始。
     var delaySeconds: Double
     var position: MacroStepPosition
+    /// 区域漂移百分比：每次触发在解析出的点周围，按窗口宽/高的 ±driftPercent% 做均匀随机偏移。
+    /// 0 = 精确点击录制点；1（默认推荐值）= 在约 1% 窗口尺寸的小区域内漂移，用于 PlayCover 自动化，
+    /// 避免每次点在完全相同的像素上、也能覆盖「推进对话 / 连续确认」这类有一定面积的按钮区。
+    /// 旧数据缺字段时解码为 0（向后兼容，行为与原来完全一致）。
+    var driftPercent: Double
 
-    init(id: UUID = UUID(), delaySeconds: Double = 0, position: MacroStepPosition) {
+    init(id: UUID = UUID(), delaySeconds: Double = 0, position: MacroStepPosition, driftPercent: Double = 0) {
         self.id = id
         self.delaySeconds = delaySeconds
         self.position = position
+        self.driftPercent = driftPercent
     }
 
     init(from decoder: Decoder) throws {
@@ -101,6 +107,7 @@ struct MacroStep: Codable, Identifiable, Hashable {
         self.id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         self.delaySeconds = try c.decodeIfPresent(Double.self, forKey: .delaySeconds) ?? 0
         self.position = try c.decode(MacroStepPosition.self, forKey: .position)
+        self.driftPercent = try c.decodeIfPresent(Double.self, forKey: .driftPercent) ?? 0
     }
 }
 

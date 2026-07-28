@@ -84,6 +84,25 @@ final class MacroRunner: ObservableObject {
         }
     }
 
+    /// 在窗口内偏移 `offset` 周围施加区域漂移。
+    /// driftPercent<=0 时原样返回（精确点击）。否则在 x/y 各自 ±(driftPercent% × 窗口对应边长) 内均匀取偏移，
+    /// 结果 clamp 回窗口范围内——保证漂移后依然落在窗口内，不会误触后台。
+    /// `random` 注入 [-1,1] 的均匀采样，生产用 `Double.random(in:)`，测试注入确定值。
+    static func applyDrift(
+        toOffset offset: CGPoint,
+        driftPercent: Double,
+        windowSize: CGSize,
+        random: (ClosedRange<Double>) -> Double = { Double.random(in: $0) }
+    ) -> CGPoint {
+        guard driftPercent > 0, windowSize.width > 0, windowSize.height > 0 else { return offset }
+        let frac = driftPercent / 100.0
+        let dx = windowSize.width * frac * random(-1...1)
+        let dy = windowSize.height * frac * random(-1...1)
+        let x = min(max(offset.x + dx, 0), windowSize.width)
+        let y = min(max(offset.y + dy, 0), windowSize.height)
+        return CGPoint(x: x, y: y)
+    }
+
     // MARK: - Internal
 
     private func startInternal(_ macro: MacroAction, profile: AppProfile) {
@@ -179,9 +198,16 @@ final class MacroRunner: ObservableObject {
             return
         }
 
+        // 区域漂移：每次触发在解析点周围随机偏移，clamp 回窗口内（详见 applyDrift）
+        let driftedOffset = Self.applyDrift(
+            toOffset: resolvedOffset,
+            driftPercent: step.driftPercent,
+            windowSize: windowFrame.size
+        )
+
         let clickPoint = CoordinateConverter.absolutePoint(
-            relativeX: resolvedOffset.x,
-            relativeY: resolvedOffset.y,
+            relativeX: driftedOffset.x,
+            relativeY: driftedOffset.y,
             in: windowFrame
         )
 
@@ -192,7 +218,8 @@ final class MacroRunner: ObservableObject {
         }
 
         let iterText = totalIterations == Int.max ? "∞" : "\(iteration + 1)/\(totalIterations)"
-        logger.log("【宏步骤】[\(macro.label)] \(iterText) - 第 \(stepIndex + 1)/\(macro.steps.count) 步 → 点击 (\(Int(clickPoint.x)),\(Int(clickPoint.y)))", type: "ACTION")
+        let driftText = step.driftPercent > 0 ? " 漂移\(String(format: "%.1f", step.driftPercent))%" : ""
+        logger.log("【宏步骤】[\(macro.label)] \(iterText) - 第 \(stepIndex + 1)/\(macro.steps.count) 步\(driftText) → 点击 (\(Int(clickPoint.x)),\(Int(clickPoint.y)))", type: "ACTION")
 
         ClickSimulator.shared.leftClick(at: clickPoint, targetApp: frontApp)
         StatusBarController.shared.flashActivity()
