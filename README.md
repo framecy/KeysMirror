@@ -175,6 +175,12 @@ macOS 在系统睡眠期间可能销毁 CGEventTap。KeysMirror 已监听屏幕�
 
 ## 更新日志
 
+### v1.6.7
+- **修复**：PlayCover 部分 iOS-on-Mac 应用（如阴阳师 `com.netease.onmyoji`）因 `Info.plist` 缺少 `LSRequiresIPhoneOS` 字段而被误判为原生 Mac App 导致点击无响应。现增加 `DTPlatformName` 及 `UIDeviceFamily` 后备检测
+- **构建**：`build.sh` 增加固定自签名证书支持（`KeysMirror Dev`），避免每次重新编译导致的 macOS 辅助功能权限丢失
+- **界面**：菜单栏下拉菜单与配置窗口标题栏增加版本号展示
+- **宏系统**：宏步骤新增 `driftPercent`（区域随机漂移）支持与完整单元测试覆盖
+
 ### v1.6.6
 - **修复**：PlayCover 等 iOS-on-Mac 应用点击完全无响应。根因是 iOS-on-Mac 判定只探 `Foo.app/Contents/Info.plist`（macOS 布局），而 PlayCover 安装的是扁平布局（`Info.plist` 在 bundle 根目录）——读不到就退化到 `.ios` 后缀判断，`com.miHoYo.hkrpg` 这类 bundleId 被误判为原生 App 走 `postToPid`，事件投递不到目标。现同时探两种布局
 - **修复**：iOS-on-Mac 投递路径重写。① `mouseDown` 前先补一个同点 `mouseMoved`——PlayCover 靠追踪鼠标移动事件流维护指针位置，缺了这步触摸落在旧位置；② `mouseDown`/`mouseUp` 之间加入 50ms 按压时长——按帧轮询输入的目标（Unity/UE）会漏掉零时长按下；③ 整段序列改在后台串行队列上同步执行——光标 disassociate 期间让出 run loop 会导致按下/抬起配对失效。光标依旧全程冻结，「光标纹丝不动」不受影响
