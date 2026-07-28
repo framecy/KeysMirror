@@ -175,6 +175,11 @@ macOS 在系统睡眠期间可能销毁 CGEventTap。KeysMirror 已监听屏幕�
 
 ## 更新日志
 
+### v1.6.6
+- **修复**：PlayCover 等 iOS-on-Mac 应用点击完全无响应。根因是 iOS-on-Mac 判定只探 `Foo.app/Contents/Info.plist`（macOS 布局），而 PlayCover 安装的是扁平布局（`Info.plist` 在 bundle 根目录）——读不到就退化到 `.ios` 后缀判断，`com.miHoYo.hkrpg` 这类 bundleId 被误判为原生 App 走 `postToPid`，事件投递不到目标。现同时探两种布局
+- **修复**：iOS-on-Mac 投递路径重写。① `mouseDown` 前先补一个同点 `mouseMoved`——PlayCover 靠追踪鼠标移动事件流维护指针位置，缺了这步触摸落在旧位置；② `mouseDown`/`mouseUp` 之间加入 50ms 按压时长——按帧轮询输入的目标（Unity/UE）会漏掉零时长按下；③ 整段序列改在后台串行队列上同步执行——光标 disassociate 期间让出 run loop 会导致按下/抬起配对失效。光标依旧全程冻结，「光标纹丝不动」不受影响
+- **测试**：新增 iOS-on-Mac 投递与 bundle 布局探测相关用例（73/73 全过）
+
 ### v1.6
 - **性能**：iOS-on-Mac 判定（每次点击都要读 `Info.plist`）按 bundleId 缓存——首次点击之后零磁盘 I/O；目标 App 退出时对应缓存失效
 - **性能**：聚焦窗口 frame 缓存——同一 App 期间 keyDown / 宏每步零 AX IPC，窗口移动 / 缩放由 AXObserver 实时失效

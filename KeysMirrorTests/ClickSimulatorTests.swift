@@ -23,6 +23,26 @@ final class ClickSimulatorTests: XCTestCase {
         XCTAssertFalse(ClickSimulator.shared.isNativeMacApp(NSRunningApplication.current))
     }
 
+    /// PlayCover 安装的 iOS app 用扁平布局（Info.plist 在 bundle 根，不在 Contents/）。
+    /// 只探 Contents/ 会读不到 plist，退化到 ".ios" 后缀后备判断——而 com.miHoYo.hkrpg
+    /// 没有该后缀，就会被误判成原生 App 走 postToPid，点击对游戏完全无效。
+    func testFlatIosBundleLayoutIsDetectedAsNonNative() {
+        ClickSimulator.shared.clearNativeCacheForTesting()
+        var probed: [String] = []
+        ClickSimulator.shared.infoPlistProvider = { url in
+            probed.append(url.path)
+            // 只有扁平布局那份存在
+            guard !url.path.contains("/Contents/") else { return nil }
+            return ["LSRequiresIPhoneOS": true] as NSDictionary
+        }
+
+        XCTAssertFalse(ClickSimulator.shared.isNativeMacApp(NSRunningApplication.current),
+                       "扁平布局的 iOS bundle 必须判为非原生，走 session 层投递")
+        XCTAssertTrue(probed.contains { $0.contains("/Contents/Info.plist") })
+        XCTAssertTrue(probed.contains { $0.hasSuffix("Info.plist") && !$0.contains("/Contents/") },
+                      "Contents/ 读不到时必须继续探 bundle 根目录")
+    }
+
     func testMissingPlistFallsBackToBundleIdSuffixHeuristic() {
         ClickSimulator.shared.clearNativeCacheForTesting()
         ClickSimulator.shared.infoPlistProvider = { _ in nil }
@@ -52,10 +72,12 @@ final class ClickSimulatorTests: XCTestCase {
         ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
             currentLocation: { calls.append("save"); return CGPoint(x: 100, y: 100) },
             associate: { connected in calls.append("associate(\(connected ? "true" : "false"))") },
-            warp: { _ in calls.append("warp") },
-            post: { _ in calls.append("post") }
+            warp: { p in calls.append("warp(\(Int(p.x)),\(Int(p.y)))") },
+            post: { calls.append(Self.describe($0)) }
         )
-        defer { ClickSimulator.shared.cursorOps = .system }
+        ClickSimulator.shared.runClickSequence = { work in work() }   // 就地同步执行
+        ClickSimulator.shared.sleepForDwell = { _ in calls.append("sleep") }
+        defer { Self.restore() }
 
         // targetApp = nil → pid = 0 → 走 iOS-on-Mac 分支
         ClickSimulator.shared.leftClick(at: CGPoint(x: 500, y: 500), targetApp: nil)
@@ -63,11 +85,135 @@ final class ClickSimulatorTests: XCTestCase {
         XCTAssertEqual(calls, [
             "save",                 // 先存当前光标位置
             "associate(false)",     // 再断开光标关联
-            "post",                 // mouseDown
-            "post",                 // mouseUp
-            "warp",                 // 关键：先 warp 回原位
+            "moved(500,500)",       // 先让目标 app 把指针挪到点击点
+            "down(500,500)",
+            "sleep",                // 阻塞式停留，全程不让出 run loop
+            "up(500,500)",
+            "moved(100,100)",       // 指针送回原处，不留 hover 态
+            "warp(100,100)",        // 关键：先 warp 回原位
             "associate(true)"       // 然后才 re-associate，避免光标抖动
         ])
+    }
+
+    private static func restore() {
+        ClickSimulator.shared.cursorOps = .system
+        ClickSimulator.shared.runClickSequence = ClickSimulator.defaultRunner
+        ClickSimulator.shared.sleepForDwell = { Thread.sleep(forTimeInterval: $0) }
+    }
+
+    /// PlayCover 等 iOS-on-Mac 运行时靠**鼠标移动事件流**维护指针位置，再据此合成 UITouch；
+    /// 既不查系统光标，也不看 mouseDown 自带的坐标。所以 mouseDown 前必须先发 mouseMoved，
+    /// 否则触摸落在旧位置上，点击打空（实测：崩坏：星穹铁道无 mouseMoved 时完全无响应）。
+    func testMouseMovedPrecedesMouseDownAtSamePoint() {
+        var calls: [String] = []
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { CGPoint(x: 10, y: 20) },
+            associate: { _ in },
+            warp: { _ in },
+            post: { calls.append(Self.describe($0)) }
+        )
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 777, y: 888), targetApp: nil)
+
+        XCTAssertEqual(calls, [
+            "moved(777,888)",   // mouseDown 之前必须先发同点的 mouseMoved
+            "down(777,888)",
+            "up(777,888)",
+            "moved(10,20)"      // 收尾把指针送回原处
+        ])
+    }
+
+    /// 把 CGEvent 压成 "类型(x,y)" 便于断言
+    private static func describe(_ event: CGEvent) -> String {
+        let name: String
+        switch event.type {
+        case .mouseMoved: name = "moved"
+        case .leftMouseDown: name = "down"
+        case .leftMouseUp: name = "up"
+        default: name = "other"
+        }
+        let p = event.location
+        return "\(name)(\(Int(p.x)),\(Int(p.y)))"
+    }
+
+    /// mouseUp 必须与 mouseDown 之间隔着 clickDwell 的阻塞停留。
+    /// 零时长按下会被 Unity / UE 这类按帧轮询输入的目标整个漏掉
+    /// （实测：PlayCover 上的崩坏：星穹铁道对 0ms 点击完全无响应，32ms 起正常）。
+    func testDwellSeparatesMouseDownFromMouseUp() {
+        var calls: [String] = []
+        var sleptFor: TimeInterval?
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { CGPoint(x: 100, y: 100) },
+            associate: { _ in },
+            warp: { _ in },
+            post: { calls.append(Self.describe($0)) }
+        )
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { sleptFor = $0; calls.append("sleep") }
+        defer { Self.restore() }
+
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 500, y: 500), targetApp: nil)
+
+        let downIdx = calls.firstIndex(of: "down(500,500)")
+        let sleepIdx = calls.firstIndex(of: "sleep")
+        let upIdx = calls.firstIndex(of: "up(500,500)")
+        XCTAssertNotNil(downIdx); XCTAssertNotNil(sleepIdx); XCTAssertNotNil(upIdx)
+        XCTAssertTrue(downIdx! < sleepIdx! && sleepIdx! < upIdx!, "停留必须夹在 down 与 up 之间")
+        XCTAssertEqual(sleptFor, ClickSimulator.clickDwell)
+        XCTAssertGreaterThan(ClickSimulator.clickDwell, 1.0 / 60.0, "按压时长必须跨过至少一帧")
+    }
+
+    /// 整段序列必须交给 runClickSequence 一次性跑完，中途不得回到调用方。
+    /// 这是核心不变量：实测把 mouseUp 拆到 main queue 的 asyncAfter 里（即光标
+    /// disassociate 期间让出 run loop），PlayCover 就收不到成对的按下/抬起，点击全废。
+    func testWholeSequenceRunsInsideOneScheduledBlock() {
+        var calls: [String] = []
+        var deferred: (() -> Void)?
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { CGPoint(x: 100, y: 100) },
+            associate: { connected in calls.append("associate(\(connected ? "true" : "false"))") },
+            warp: { _ in calls.append("warp") },
+            post: { calls.append(Self.describe($0)) }
+        )
+        // 扣住不执行 → 若有任何一步发生在块外，就会提前出现在 calls 里
+        ClickSimulator.shared.runClickSequence = { deferred = $0 }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 500, y: 500), targetApp: nil)
+        XCTAssertTrue(calls.isEmpty, "块未执行前不应有任何光标操作或事件投递")
+
+        deferred?()
+        XCTAssertEqual(calls.first, "associate(false)")
+        XCTAssertEqual(calls.last, "associate(true)", "冻结与恢复必须在同一个块内闭合")
+    }
+
+    /// 连击由串行队列天然保证不交错：每次点击都是一段自洽闭合的序列，
+    /// associate(false)/associate(true) 成对且数量相等，光标不会被卡在解除关联状态。
+    func testEachClickIsSelfContainedAndBalanced() {
+        var calls: [String] = []
+        var blocks: [() -> Void] = []
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { CGPoint(x: 100, y: 100) },
+            associate: { connected in calls.append("associate(\(connected ? "true" : "false"))") },
+            warp: { _ in },
+            post: { _ in }
+        )
+        ClickSimulator.shared.runClickSequence = { blocks.append($0) }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 500, y: 500), targetApp: nil)
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 600, y: 600), targetApp: nil)
+        blocks.forEach { $0() }   // 串行队列语义：一个跑完才跑下一个
+
+        XCTAssertEqual(calls, [
+            "associate(false)", "associate(true)",
+            "associate(false)", "associate(true)"
+        ], "两次点击各自闭合，不会交错")
     }
 
     func testTerminateNotificationInvalidatesCacheEntry() async {

@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -e
 
-PROJECT="/Users/chace/Documents/KeysMirror/KeysMirror.xcodeproj"
+PROJECT="${0:A:h}/KeysMirror.xcodeproj"
 SCHEME="KeysMirror"
 CONFIG="${1:-Debug}"
 DERIVED="/Users/chace/KeysMirror_build"
