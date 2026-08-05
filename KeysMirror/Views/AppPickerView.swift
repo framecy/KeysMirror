@@ -31,21 +31,23 @@ struct AppPickerView: View {
                         if let icon = application.icon {
                             Image(nsImage: icon)
                                 .resizable()
-                                .frame(width: 28, height: 28)
+                                .frame(width: Theme.Metrics.minHitTarget, height: Theme.Metrics.minHitTarget)
                         } else {
                             Image(systemName: "app")
-                                .frame(width: 28, height: 28)
+                                .frame(width: Theme.Metrics.minHitTarget, height: Theme.Metrics.minHitTarget)
                         }
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(application.displayName)
                                 .foregroundStyle(.primary)
                             Text(application.bundleIdentifier)
-                                .font(.caption)
+                                .font(Theme.Typography.caption)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
+                    .frame(minHeight: Theme.Metrics.listRowMinHeight)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }

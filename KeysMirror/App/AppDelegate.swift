@@ -53,8 +53,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 初始化时按当前前台 app 决定是否启用 tap
         refreshActiveProfileAvailability()
 
+        ActivationAuditor.shared.start()
+        preferencesStore.applyDockVisibility()
         registerGlobalHotkey()
         auditLegacyMappings()
+        OnboardingController.shared.showIfNeeded()
     }
 
     /// 启动时扫描所有 profile，对缺少缩放参考的旧映射给出明确警告。
@@ -76,21 +79,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - 全局开关 hotkey
 
     private func registerGlobalHotkey() {
-        globalHotkey.onTrigger = { [weak self] in
-            self?.toggleInterceptor()
-        }
+        globalHotkey.setHandler({ [weak self] in self?.toggleInterceptor() }, for: .toggleMappings)
         if let config = preferencesStore.preferences.globalToggleHotkey {
-            _ = globalHotkey.register(config)
+            _ = globalHotkey.register(config, for: .toggleMappings)
         }
+
     }
 
     /// 配置 UI 修改 hotkey 后调用，重新注册并写入 preferences
     func updateGlobalHotkey(_ config: HotkeyConfig?) {
         preferencesStore.update { $0.globalToggleHotkey = config }
         if let config {
-            _ = globalHotkey.register(config)
+            _ = globalHotkey.register(config, for: .toggleMappings)
         } else {
-            globalHotkey.unregister()
+            globalHotkey.unregister(.toggleMappings)
         }
     }
 
@@ -164,7 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func handleScreenWake() {
         guard permissionChecker.isAccessibilityGranted else { return }
         // 唤醒后事件 tap 可能已被系统销毁，重建；运行中的宏 Task 也可能被休眠扰乱，统一停掉
-        MacroRunner.shared.stop(reason: "系统唤醒")
+        MacroRunner.shared.stopAll(reason: "系统唤醒")
         _ = keyInterceptor.start()
         statusBarController.update(permissionGranted: true, interceptorEnabled: keyInterceptor.isEnabled)
     }
@@ -199,7 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         keyInterceptor.stop()
         overlayController.hideOverlay()
-        MacroRunner.shared.stop(reason: "App 退出")
+        MacroRunner.shared.stopAll(reason: "App 退出")
         statusBarController.cancelFlash()
         globalHotkey.teardown()
         NotificationCenter.default.removeObserver(self)

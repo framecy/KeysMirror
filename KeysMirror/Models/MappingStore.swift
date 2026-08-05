@@ -104,6 +104,22 @@ final class MappingStore: ObservableObject {
         save()
     }
 
+    /// 撤销删除：把整个 profile（含映射与宏）原样放回原位置。
+    /// 已存在同 id 时不重复插入；`index` 越界时追加到末尾。
+    func restoreProfile(_ profile: AppProfile, at index: Int? = nil) {
+        guard !profiles.contains(where: { $0.id == profile.id }) else { return }
+        if let index, index >= 0, index <= profiles.count {
+            profiles.insert(profile, at: index)
+        } else {
+            profiles.append(profile)
+        }
+        save()
+    }
+
+    func indexOfProfile(_ profile: AppProfile) -> Int? {
+        profiles.firstIndex(where: { $0.id == profile.id })
+    }
+
     func addMapping(_ mapping: KeyMapping, to profile: AppProfile) {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
         profiles[index].mappings.append(mapping)
@@ -122,6 +138,19 @@ final class MappingStore: ObservableObject {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
         profiles[index].mappings.removeAll { $0.id == mapping.id }
         save()
+    }
+
+    /// 撤销删除用：放回原来的位置（列表顺序不跳动）。越界或已存在时退化为 append。
+    func insertMapping(_ mapping: KeyMapping, at index: Int, in profile: AppProfile) {
+        guard let p = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
+        guard !profiles[p].mappings.contains(where: { $0.id == mapping.id }) else { return }
+        let target = min(max(index, 0), profiles[p].mappings.count)
+        profiles[p].mappings.insert(mapping, at: target)
+        save()
+    }
+
+    func indexOfMapping(_ mapping: KeyMapping, in profile: AppProfile) -> Int? {
+        profiles.first(where: { $0.id == profile.id })?.mappings.firstIndex(where: { $0.id == mapping.id })
     }
 
     // MARK: - Macros
@@ -143,6 +172,19 @@ final class MappingStore: ObservableObject {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
         profiles[index].macros.removeAll { $0.id == macro.id }
         save()
+    }
+
+    /// 撤销删除用：放回原来的位置。
+    func insertMacro(_ macro: MacroAction, at index: Int, in profile: AppProfile) {
+        guard let p = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
+        guard !profiles[p].macros.contains(where: { $0.id == macro.id }) else { return }
+        let target = min(max(index, 0), profiles[p].macros.count)
+        profiles[p].macros.insert(macro, at: target)
+        save()
+    }
+
+    func indexOfMacro(_ macro: MacroAction, in profile: AppProfile) -> Int? {
+        profiles.first(where: { $0.id == profile.id })?.macros.firstIndex(where: { $0.id == macro.id })
     }
 
     // MARK: - Trigger conflicts
@@ -179,7 +221,43 @@ final class MappingStore: ObservableObject {
         return macroHit
     }
 
-    /// 旧 KeyMapping 重载：保持 MappingEditorView 调用点不动。
+    /// 与 `hasDuplicateTrigger` 同一判定，但返回**占用者是谁**，
+    /// 供「⌃⇧K 已被宏『连点』占用」这类指名道姓的提示与键位总览使用。
+    func triggerOwner(
+        triggerType: TriggerType,
+        keyCode: UInt16,
+        modifiers: UInt64,
+        mouseButtonNumber: Int?,
+        in profile: AppProfile,
+        excludingMappingId: UUID? = nil,
+        excludingMacroId: UUID? = nil
+    ) -> TriggerOccupancy? {
+        guard let stored = profiles.first(where: { $0.id == profile.id }) else { return nil }
+
+        if let hit = stored.mappings.first(where: { other in
+            if let excludingMappingId, other.id == excludingMappingId { return false }
+            return triggersMatch(
+                lhsType: other.triggerType, lhsKey: other.keyCode, lhsMods: other.modifiers, lhsMouse: other.mouseButtonNumber,
+                rhsType: triggerType, rhsKey: keyCode, rhsMods: modifiers, rhsMouse: mouseButtonNumber
+            )
+        }) {
+            return TriggerOccupancy(mapping: hit)
+        }
+
+        if let hit = stored.macros.first(where: { other in
+            if let excludingMacroId, other.id == excludingMacroId { return false }
+            return triggersMatch(
+                lhsType: other.triggerType, lhsKey: other.keyCode, lhsMods: other.modifiers, lhsMouse: other.mouseButtonNumber,
+                rhsType: triggerType, rhsKey: keyCode, rhsMods: modifiers, rhsMouse: mouseButtonNumber
+            )
+        }) {
+            return TriggerOccupancy(macro: hit)
+        }
+
+        return nil
+    }
+
+    /// 旧 KeyMapping 重载：保持既有调用点不动。
     func hasDuplicateTrigger(_ candidate: KeyMapping, in profile: AppProfile, excludingId: UUID? = nil) -> Bool {
         return hasDuplicateTrigger(
             triggerType: candidate.triggerType,

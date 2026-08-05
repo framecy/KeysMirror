@@ -18,6 +18,29 @@ final class ClickSimulator {
         return source
     }()
 
+    /// 投递期间临时屏蔽**物理鼠标**事件的事件源，仅用于后台跑宏。
+    ///
+    /// 为什么需要：iOS-on-Mac 运行时靠鼠标移动事件流维护指针位置。宏在后台点击时，
+    /// 用户正拿着鼠标在别的 app 里操作——一条真实的 mouseMoved 挤在我们的
+    /// `moved(目标)` 和 `down` 之间，就会把游戏内部记的指针带走，这一击直接落空。
+    /// disassociate 只冻结光标，拦不住硬件事件本身，必须靠这里的抑制区间。
+    ///
+    /// 只放行键盘与系统事件：用户在浏览器里打字不受影响，代价是每次点击前后各约
+    /// `suppressionInterval` 的鼠标输入被吞掉。宏步之间通常隔着数百毫秒到数十秒，
+    /// 这点损失基本无感。
+    ///
+    /// **不能**给前台映射点击用同一个源：映射触发频率高（每次按键一发），
+    /// 那样会让玩家在游戏里的鼠标瞄准每按一次键就顿一下。
+    private lazy var suppressingEventSource: CGEventSource? = {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        source?.localEventsSuppressionInterval = Self.clickDwell + 0.02
+        source?.setLocalEventsFilterDuringSuppressionState(
+            [.permitLocalKeyboardEvents, .permitSystemDefinedEvents],
+            state: .eventSuppressionStateSuppressionInterval
+        )
+        return source
+    }()
+
     // 测试接缝：注入 Info.plist 读取与 App 枚举逻辑
     var infoPlistProvider: (URL) -> NSDictionary? = { NSDictionary(contentsOf: $0) }
 
@@ -27,10 +50,15 @@ final class ClickSimulator {
     /// mouseDown 与 mouseUp 之间的按压时长。
     /// 按帧轮询输入的目标（Unity / UE，如 PlayCover 上的崩坏：星穹铁道）观察不到零时长的
     /// 按下——down 与 up 落在同一次轮询间隔内，等同于按钮从未被按过。
-    /// 实测：0ms 完全无响应，32ms 起正常。取 50ms ≈ 3 帧 @60fps（掉到 30fps 也有 1.5 帧），
-    /// 既跨得过轮询间隔，又把方案 B 里光标离位的时间压到基本看不见，
-    /// 且远低于长按手势阈值（通常 500ms）。
-    static let clickDwell: TimeInterval = 0.05
+    /// 实测：0ms 完全无响应，32ms 起正常。
+    ///
+    /// v1.6.3：App Store 正版「设计给 iPad」游戏（问道手游、阴阳师）反馈方案 B 里指针
+    /// 来回跳的位移感明显——不是 hover 高亮的渐变动画，是指针本身物理位移，跳动时长
+    /// 与 dwell 近似线性相关。原先 50ms（≈3 帧 @60fps）在 32ms 实测底线上留了 18ms 余量；
+    /// 收到 40ms（留 8ms 余量，仍扛得住掉到 30fps 时的 1 帧轮询窗口），视觉跳动时长
+    /// 缩短约 20%。这个值是所有 iOS-on-Mac 游戏共用的，调低前后都需要在崩坏：星穹铁道
+    /// 这类按帧轮询输入的 PlayCover 游戏上验证点击可靠性没有退化。
+    static let clickDwell: TimeInterval = 0.04
 
     /// 点击投递专用串行队列。
     ///
@@ -58,6 +86,23 @@ final class ClickSimulator {
     // 测试接缝：注入按压停留。单测换成空实现，避免真的睡 50ms。
     var sleepForDwell: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
 
+    /// 强制让 iOS-on-Mac 应用走方案 A 的开关。
+    ///
+    /// 实测结论（2026-08，问道手游 com.gbits.atm.ios，App Store 正版「为 iPad 设计」应用）：
+    /// **postToPid 对 iOS-on-Mac 运行时无效**。同一坐标关掉开关走方案 B 有响应、打开走方案 A
+    /// 无响应，对照明确。原因是架构性的——「指针 → UITouch」的翻译由系统框架层完成，
+    /// 而那一层订阅的是 session 级事件流；postToPid 恰好绕过它，事件进了进程却没人翻译。
+    /// 这跟 PlayCover 侧载应用的表现一致，两类 iOS-on-Mac 应用没有区别。
+    ///
+    /// 因此**指针闪烁无法根除**，只能靠 clickDwell 收窄 + 点击期间隐藏光标来压缩。
+    /// 保留此接缝仅为单测可注入；生产恒为 false，不再暴露成用户开关——
+    /// 打开会让所有点击静默失效。
+    var forcePostToPidProvider: () -> Bool = { false }
+
+    /// 测试接缝：方案 A 的投递。与方案 B 的 `cursorOps` 对称，
+    /// 让「走了哪条路径」可断言，且单测不会真的往进程里投递事件。
+    var postToPid: (CGEvent, pid_t) -> Void = { event, pid in event.postToPid(pid) }
+
     private init() {
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didTerminateApplicationNotification,
@@ -72,10 +117,23 @@ final class ClickSimulator {
         }
     }
 
-    func leftClick(at point: CGPoint, targetApp: NSRunningApplication? = nil) {
+    /// - Parameter suppressLocalInput: 投递期间屏蔽物理鼠标事件，避免用户正在动鼠标时把这一击
+    ///   挤掉。仅后台跑宏该开；前台映射保持关闭，否则玩家的鼠标每按一次键就顿一下。
+    /// - Parameter tagTargetProcess: 给 session 层事件打上目标进程标记
+    ///   （`eventTargetUnixProcessID`）。事件依然走 session 流——iOS-on-Mac 运行时靠它维护
+    ///   指针位置，绕不开——但被标记后 Window Server 有机会直接投给该进程，从而跳过
+    ///   「点击不活跃窗口 → 激活该窗口」的命中测试路径，即宏跑着跑着把游戏顶到前台的成因。
+    ///   ⚠️ 未经实测验证：若发现点击失效，先怀疑这里。
+    func leftClick(
+        at point: CGPoint,
+        targetApp: NSRunningApplication? = nil,
+        suppressLocalInput: Bool = false,
+        tagTargetProcess: Bool = false
+    ) {
+        let source = suppressLocalInput ? suppressingEventSource : eventSource
         guard
-            let down = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
-            let up   = CGEvent(mouseEventSource: eventSource, mouseType: .leftMouseUp,   mouseCursorPosition: point, mouseButton: .left)
+            let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
+            let up   = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp,   mouseCursorPosition: point, mouseButton: .left)
         else { return }
 
         let pid = targetApp?.processIdentifier ?? 0
@@ -84,14 +142,25 @@ final class ClickSimulator {
         let dwell = Self.clickDwell
         let sleep = sleepForDwell
 
-        if pid > 0 && isNative {
+        // 实验开关：iOS-on-Mac 应用本该走方案 B，开关打开时改走方案 A 做实机验证。
+        // 只在真正改变了路由时记一笔日志，正常使用不产生噪音。
+        let forced = !isNative && pid > 0 && forcePostToPidProvider()
+        if forced {
+            AppLogger.shared.log(
+                "【实验】\(targetApp?.localizedName ?? "?") 本应走方案B(session)，已强制改走方案A(postToPid) pid=\(pid)",
+                type: "ACTION"
+            )
+        }
+
+        if pid > 0 && (isNative || forced) {
             // 方案 A：postToPid — 原生 macOS App
             // 完全绕过 Window Server，光标本身不会移动，无需任何光标管理。
             // 仍然走后台队列同步等待，好让按压跨过目标的输入轮询间隔。
+            let post = postToPid
             runClickSequence {
-                down.postToPid(pid)
+                post(down, pid)
                 sleep(dwell)
-                up.postToPid(pid)
+                post(up, pid)
             }
         } else {
             // 方案 B：Session 层投递 — iOS-on-Mac App
@@ -114,23 +183,57 @@ final class ClickSimulator {
             //
             // 整段跑在 clickQueue 上（见其注释）：中途一旦让出 run loop，PlayCover
             // 就收不到成对的按下/抬起。
-            guard let moved = CGEvent(mouseEventSource: eventSource, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) else { return }
-            let source = eventSource
+            guard let moved = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left) else { return }
+            // down 与 up 之间再钉一次位置：万一有真实 move 挤进来，抬起也不会跑到别处，
+            // 否则目标只收到半个手势（按下有效、抬起落在别处），点击照样失败。
+            let reassert = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left)
+            if tagTargetProcess, pid > 0 {
+                for event in [moved, down, up, reassert].compactMap({ $0 }) {
+                    event.setIntegerValueField(.eventTargetUnixProcessID, value: Int64(pid))
+                }
+            }
             let ops = cursorOps
 
+            let audit = tagTargetProcess
+            let tagPid: pid_t = tagTargetProcess ? pid : 0
+            let auditName = targetApp?.localizedName ?? "?"
             runClickSequence {
+                if audit {
+                    Task { @MainActor in
+                        AppLogger.shared.log("【点击·投递开始】\(auditName) @(\(Int(point.x)),\(Int(point.y)))", type: "ACTION")
+                    }
+                }
                 let savedPos = ops.currentLocation()
+                // 先隐藏光标再动它：disassociate 期间 Window Server 仍会按事件携带的
+                // mouseCursorPosition 把指针 sprite 挪到点击点，哪怕已 warp 回原位收尾，
+                // 中间那一帧真实可见——用户看到的就是「点一下鼠标闪一下」。隐藏起来，
+                // 整段跳到点击点再跳回来的过程就没有画面，warp 完成后立即取消隐藏。
+                ops.hide()
                 ops.associate(false)
                 ops.post(moved)
                 ops.post(down)
                 sleep(dwell)
+                if let reassert { ops.post(reassert) }
                 ops.post(up)
-                // 把目标 app 内部记的指针也送回原处，避免在按钮上留下 hover 态
+                // 把目标 app 内部记的指针也送回原处，避免在按钮上留下 hover 态。
+                //
+                // 这一条**必须**和前面四个事件一样打上目标进程标记：它的坐标是用户光标的真实
+                // 位置，不打标记就会广播给光标底下的任何应用——用户在浏览器看视频时，
+                // 播放器会把它当成"用户动了鼠标"，每跑一步宏就弹一次进度条。
                 if let movedBack = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: savedPos, mouseButton: .left) {
+                    if tagPid > 0 {
+                        movedBack.setIntegerValueField(.eventTargetUnixProcessID, value: Int64(tagPid))
+                    }
                     ops.post(movedBack)
                 }
                 ops.warp(savedPos)
                 ops.associate(true)
+                ops.unhide()
+                if audit {
+                    Task { @MainActor in
+                        AppLogger.shared.log("【点击·投递结束】\(auditName)", type: "ACTION")
+                    }
+                }
             }
         }
     }
@@ -163,12 +266,17 @@ final class ClickSimulator {
         var associate: (Bool) -> Void
         var warp: (CGPoint) -> Void
         var post: (CGEvent) -> Void
+        // 默认空实现：老测试字面量不用改就能继续编译，且不会往 calls 数组里记一笔。
+        var hide: () -> Void = {}
+        var unhide: () -> Void = {}
 
         static let system = CursorOps(
             currentLocation: { CGEvent(source: nil)?.location ?? .zero },
             associate: { connected in CGAssociateMouseAndMouseCursorPosition(connected ? 1 : 0) },
             warp: { CGWarpMouseCursorPosition($0) },
-            post: { $0.post(tap: .cgSessionEventTap) }
+            post: { $0.post(tap: .cgSessionEventTap) },
+            hide: { CGDisplayHideCursor(CGMainDisplayID()) },
+            unhide: { CGDisplayShowCursor(CGMainDisplayID()) }
         )
     }
 
@@ -177,16 +285,25 @@ final class ClickSimulator {
             return !(app.bundleIdentifier?.hasSuffix(".ios") ?? false)
         }
 
-        // 两种 bundle 布局都要探：
-        //   macOS  → Foo.app/Contents/Info.plist
-        //   iOS    → Foo.app/Info.plist          （PlayCover 安装的就是这种扁平布局）
-        // 只查 Contents/ 会让 PlayCover 应用读不到 plist，退化到 ".ios" 后缀后备判断；
-        // 而 com.miHoYo.hkrpg 这类 bundleId 并没有该后缀，就会被误判成原生 App 走
-        // postToPid——iOS-on-Mac 应用收不到那条路径的事件，表现为点击完全无响应。
-        let candidates = [
+        // 三种 bundle 布局都要探：
+        //   macOS       → Foo.app/Contents/Info.plist
+        //   PlayCover   → Foo.app/Info.plist                                （扁平布局）
+        //   App Store   → Foo.app/Wrapper/<原始 iOS 产物名>.app/Info.plist   （Apple 官方
+        //                 「iPhone / iPad 兼容 App」在 Apple Silicon 上的包装格式，Foo.app/
+        //                 WrappedBundle 是指向 Wrapper/ 内真实 .app 的符号链接）
+        // 只查前两种会让 App Store 版「设计给 iPad 的游戏」读不到 plist，退化到 ".ios" 后缀
+        // 后备判断；而 com.netease.onmyoji 这类 bundleId 并没有该后缀，会被误判成原生 App
+        // 走 postToPid——绕过了 iOS-on-Mac 分支专门做的光标隐藏，表现为点击时光标可见地
+        // 跳一下（阴阳师、问道手游等 App Store 版都是这个 Wrapper 布局）。
+        var candidates = [
             bundleURL.appendingPathComponent("Contents").appendingPathComponent("Info.plist"),
             bundleURL.appendingPathComponent("Info.plist"),
         ]
+        let wrappedBundleLink = bundleURL.appendingPathComponent("WrappedBundle")
+        if FileManager.default.fileExists(atPath: wrappedBundleLink.path) {
+            let resolved = wrappedBundleLink.resolvingSymlinksInPath()
+            candidates.append(resolved.appendingPathComponent("Info.plist"))
+        }
 
         for url in candidates {
             guard let plist = infoPlistProvider(url) else { continue }

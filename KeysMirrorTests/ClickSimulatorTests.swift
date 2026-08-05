@@ -88,6 +88,7 @@ final class ClickSimulatorTests: XCTestCase {
             "moved(500,500)",       // 先让目标 app 把指针挪到点击点
             "down(500,500)",
             "sleep",                // 阻塞式停留，全程不让出 run loop
+            "moved(500,500)",       // 抬起前再钉一次位置，防真实 move 挤进来把 up 带偏
             "up(500,500)",
             "moved(100,100)",       // 指针送回原处，不留 hover 态
             "warp(100,100)",        // 关键：先 warp 回原位
@@ -99,6 +100,86 @@ final class ClickSimulatorTests: XCTestCase {
         ClickSimulator.shared.cursorOps = .system
         ClickSimulator.shared.runClickSequence = ClickSimulator.defaultRunner
         ClickSimulator.shared.sleepForDwell = { Thread.sleep(forTimeInterval: $0) }
+        ClickSimulator.shared.forcePostToPidProvider = { false }
+        ClickSimulator.shared.postToPid = { event, pid in event.postToPid(pid) }
+    }
+
+    // MARK: - 实验开关：强制 postToPid
+
+    /// 开关打开时，本该走方案 B 的 iOS-on-Mac 应用必须改走方案 A：
+    /// 全程不得触碰光标（这正是「指针不闪烁 + 不需要前台」的来源）。
+    func testForcePostToPidRoutesIosAppThroughPidPath() {
+        ClickSimulator.shared.clearNativeCacheForTesting()
+        ClickSimulator.shared.infoPlistProvider = { _ in ["LSRequiresIPhoneOS": true] as NSDictionary }
+
+        var cursorCalls: [String] = []
+        var pidPosts: [String] = []
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { cursorCalls.append("save"); return .zero },
+            associate: { cursorCalls.append("associate(\($0))") },
+            warp: { _ in cursorCalls.append("warp") },
+            post: { cursorCalls.append(Self.describe($0)) },
+            hide: { cursorCalls.append("hide") },
+            unhide: { cursorCalls.append("unhide") }
+        )
+        ClickSimulator.shared.postToPid = { event, pid in pidPosts.append("\(Self.describe(event))@\(pid)") }
+        ClickSimulator.shared.forcePostToPidProvider = { true }
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        let app = NSRunningApplication.current
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 300, y: 400), targetApp: app)
+
+        XCTAssertTrue(cursorCalls.isEmpty, "方案 A 全程不得触碰光标，否则指针仍会闪")
+        XCTAssertEqual(pidPosts, [
+            "down(300,400)@\(app.processIdentifier)",
+            "up(300,400)@\(app.processIdentifier)",
+        ])
+    }
+
+    /// 开关关闭时行为不变——同一个 iOS 应用仍走方案 B，保证实验开关默认零影响。
+    func testIosAppStillUsesSessionPathWhenSwitchOff() {
+        ClickSimulator.shared.clearNativeCacheForTesting()
+        ClickSimulator.shared.infoPlistProvider = { _ in ["LSRequiresIPhoneOS": true] as NSDictionary }
+
+        var cursorCalls: [String] = []
+        var pidPosts: [String] = []
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { .zero },
+            associate: { cursorCalls.append("associate(\($0))") },
+            warp: { _ in cursorCalls.append("warp") },
+            post: { cursorCalls.append(Self.describe($0)) },
+            hide: { cursorCalls.append("hide") },
+            unhide: { cursorCalls.append("unhide") }
+        )
+        ClickSimulator.shared.postToPid = { event, pid in pidPosts.append("\(Self.describe(event))@\(pid)") }
+        ClickSimulator.shared.forcePostToPidProvider = { false }
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 300, y: 400), targetApp: NSRunningApplication.current)
+
+        XCTAssertTrue(pidPosts.isEmpty, "开关关闭时不应走 postToPid")
+        XCTAssertEqual(cursorCalls.first, "hide")
+        XCTAssertEqual(cursorCalls.last, "unhide")
+    }
+
+    /// 开关不得影响原生 macOS 应用——它们本来就走方案 A。
+    func testNativeAppUnaffectedBySwitch() {
+        ClickSimulator.shared.clearNativeCacheForTesting()
+        ClickSimulator.shared.infoPlistProvider = { _ in ["LSRequiresIPhoneOS": false] as NSDictionary }
+
+        var pidPosts = 0
+        ClickSimulator.shared.postToPid = { _, _ in pidPosts += 1 }
+        ClickSimulator.shared.forcePostToPidProvider = { false }
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 1, y: 2), targetApp: NSRunningApplication.current)
+        XCTAssertEqual(pidPosts, 2, "原生应用无论开关如何都走 postToPid")
     }
 
     /// PlayCover 等 iOS-on-Mac 运行时靠**鼠标移动事件流**维护指针位置，再据此合成 UITouch；
@@ -121,6 +202,7 @@ final class ClickSimulatorTests: XCTestCase {
         XCTAssertEqual(calls, [
             "moved(777,888)",   // mouseDown 之前必须先发同点的 mouseMoved
             "down(777,888)",
+            "moved(777,888)",   // 抬起前重申位置，保证 down/up 落在同一点
             "up(777,888)",
             "moved(10,20)"      // 收尾把指针送回原处
         ])

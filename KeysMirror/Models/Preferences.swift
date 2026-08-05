@@ -1,12 +1,34 @@
+import AppKit
 import Foundation
 
 /// 全局偏好（与 mappings.json 分离，避免数据耦合）。
 /// 当前只承载全局开关 hotkey；后续新增项追加字段即可。
 struct Preferences: Codable {
     var globalToggleHotkey: HotkeyConfig?
+    /// 游戏内 HUD 三态循环热键（v1.6），默认 ⌃⇧H
+    var hudCycleHotkey: HotkeyConfig?
 
-    init(globalToggleHotkey: HotkeyConfig? = .defaultToggle) {
+    /// 是否在 Dock 中显示。
+    /// App 本体是 LSUIElement（菜单栏常驻），默认不占 Dock；打开后运行时切成 .regular，
+    /// Dock 里就有图标可以点。菜单栏面板与主窗设置菜单共用这一个字段，避免两处状态不同步。
+    var showInDock: Bool
+
+    init(
+        globalToggleHotkey: HotkeyConfig? = .defaultToggle,
+        hudCycleHotkey: HotkeyConfig? = .defaultHUDCycle,
+        showInDock: Bool = false
+    ) {
         self.globalToggleHotkey = globalToggleHotkey
+        self.hudCycleHotkey = hudCycleHotkey
+        self.showInDock = showInDock
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.globalToggleHotkey = try c.decodeIfPresent(HotkeyConfig.self, forKey: .globalToggleHotkey)
+        // 旧 preferences.json 没有这个字段 → 用默认 ⌃⇧H
+        self.hudCycleHotkey = try c.decodeIfPresent(HotkeyConfig.self, forKey: .hudCycleHotkey) ?? .defaultHUDCycle
+        self.showInDock = try c.decodeIfPresent(Bool.self, forKey: .showInDock) ?? false
     }
 }
 
@@ -20,6 +42,12 @@ struct HotkeyConfig: Codable, Hashable {
     static let defaultToggle = HotkeyConfig(
         keyCode: 0x28, // kVK_ANSI_K
         modifiers: 0x40000 | 0x20000 // maskControl | maskShift
+    )
+
+    /// 默认 ⌃⇧H：切换游戏内 HUD 的完整 / 紧凑 / 隐藏
+    static let defaultHUDCycle = HotkeyConfig(
+        keyCode: 0x04, // kVK_ANSI_H
+        modifiers: 0x40000 | 0x20000
     )
 }
 
@@ -46,6 +74,14 @@ final class PreferencesStore: ObservableObject {
         } else {
             self.preferences = Preferences()
         }
+    }
+
+    /// 把「是否在 Dock 显示」应用到当前进程。
+    /// 切到 .regular 时补一次 activate：否则 Dock 图标出现了但 App 仍在后台，看着像没反应。
+    func applyDockVisibility() {
+        let show = preferences.showInDock
+        NSApp.setActivationPolicy(show ? .regular : .accessory)
+        if show { NSApp.activate(ignoringOtherApps: true) }
     }
 
     func update(_ transform: (inout Preferences) -> Void) {

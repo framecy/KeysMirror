@@ -1,10 +1,15 @@
 import SwiftUI
 
+/// 映射列表。与宏列表**并列但独立**（评审决议：不合并成一个动作列表）。
 struct MappingListView: View {
     let profile: AppProfile
+    var searchText: String = ""
     let onEdit: (KeyMapping) -> Void
     let onDelete: (KeyMapping) -> Void
     let onToggleEnabled: (KeyMapping) -> Void
+    var onDuplicate: ((KeyMapping) -> Void)?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if profile.mappings.isEmpty {
@@ -13,81 +18,81 @@ struct MappingListView: View {
                 systemImage: "keyboard",
                 description: "创建一条映射后，录制目标应用窗口中的点击位置。"
             )
+        } else if filtered.isEmpty {
+            EmptyStateView(
+                title: "没有匹配的映射",
+                systemImage: "magnifyingglass",
+                description: "换个关键词试试，可以按名称或键位搜索。"
+            )
         } else {
-            List(profile.mappings) { mapping in
-                HStack(spacing: 12) {
-                    Toggle("", isOn: Binding(
-                        get: { mapping.isEnabled },
-                        set: { _ in onToggleEnabled(mapping) }
-                    ))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .help(mapping.isEnabled ? "已启用，点击禁用" : "已禁用，点击启用")
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text(mapping.label)
-                                .font(.headline)
-                            scaleBadge(for: mapping)
-                        }
-                        Text(mapping.displayShortcut)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+            List(filtered) { mapping in
+                ActionRow(
+                    title: mapping.label,
+                    trigger: .init(mapping: mapping),
+                    summary: "(\(Int(mapping.relativeX)), \(Int(mapping.relativeY)))",
+                    state: mapping.isEnabled ? .enabled : .disabled,
+                    badges: { scaleBadge(for: mapping) },
+                    onToggleEnabled: { onToggleEnabled(mapping) },
+                    onEdit: { onEdit(mapping) },
+                    onDuplicate: onDuplicate.map { dup in { dup(mapping) } },
+                    onDelete: { onDelete(mapping) }
+                )
+                .contextMenu {
+                    Button("编辑") { onEdit(mapping) }
+                    Button(mapping.isEnabled ? "禁用" : "启用") { onToggleEnabled(mapping) }
+                    if let onDuplicate {
+                        Button("复制") { onDuplicate(mapping) }
                     }
-
-                    Spacer()
-
-                    Text("(\(Int(mapping.relativeX)), \(Int(mapping.relativeY)))")
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.secondary)
-
-                    Button("编辑") {
-                        onEdit(mapping)
-                    }
-
-                    Button("删除", role: .destructive) {
-                        onDelete(mapping)
-                    }
+                    Divider()
+                    Button("删除", role: .destructive) { onDelete(mapping) }
                 }
-                .opacity(mapping.isEnabled ? 1.0 : 0.55)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
             }
-            .listStyle(.inset)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .animation(Theme.Motion.standard(reduceMotion), value: profile.mappings)
         }
     }
 
+    private var filtered: [KeyMapping] {
+        Self.filter(profile.mappings, searchText: searchText)
+    }
+
+    /// 纯函数，便于单测：按名称或键位标签匹配（大小写不敏感）。
+    static func filter(_ mappings: [KeyMapping], searchText: String) -> [KeyMapping] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return mappings }
+        return mappings.filter {
+            $0.label.localizedCaseInsensitiveContains(query) ||
+            $0.displayShortcut.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    /// 徽标只标**例外**：缩放跟随是正常状态，全部行都挂一个绿标只是噪音；
+    /// 缺参考才是需要用户处理的情况，用 warning 色标出来。
     @ViewBuilder
     private func scaleBadge(for mapping: KeyMapping) -> some View {
-        if mapping.hasScaleReference {
-            Text("缩放跟随")
-                .font(.caption2.weight(.medium))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.green.opacity(0.18))
-                .foregroundStyle(.green)
-                .clipShape(Capsule())
-                .help("已记录窗口尺寸快照，目标窗口缩放时点击位置按比例换算")
-        } else {
-            Text("v1.2 旧映射")
-                .font(.caption2.weight(.medium))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.gray.opacity(0.18))
-                .foregroundStyle(.secondary)
-                .clipShape(Capsule())
-                .help("没有窗口尺寸快照，缩放后会偏；编辑并重新录制位置即可启用缩放跟随")
+        if !mapping.hasScaleReference {
+            Badge(text: "无缩放参考", color: Theme.Palette.warning, systemImage: "exclamationmark.triangle.fill")
+                .help("没有窗口尺寸快照，窗口缩放后点击会偏；编辑并重新录制位置即可启用缩放跟随")
         }
     }
 }
 
 /// 宏列表：与 MappingListView 并列在 profile 详情页里。
-/// 运行中的宏行高亮（红圆点 + 红边）；提供启停 toggle / 编辑 / 删除入口。
+/// 运行中的宏行状态点变红并呼吸；提供启停 / 编辑 / 删除入口。
 struct MacroListView: View {
     let profile: AppProfile
-    let runningMacroId: UUID?
+    /// 运行中的宏 id 集合（支持多条宏并行）
+    let runningMacroIds: Set<UUID>
+    var searchText: String = ""
     let onEdit: (MacroAction) -> Void
     let onDelete: (MacroAction) -> Void
     let onToggleEnabled: (MacroAction) -> Void
+    var onDuplicate: ((MacroAction) -> Void)?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if profile.macros.isEmpty {
@@ -96,50 +101,82 @@ struct MacroListView: View {
                 systemImage: "list.bullet.rectangle",
                 description: "宏可以用一个触发键执行多步点击，并按秒/分延迟、循环 N 次或无限。"
             )
+        } else if filtered.isEmpty {
+            EmptyStateView(
+                title: "没有匹配的宏",
+                systemImage: "magnifyingglass",
+                description: "换个关键词试试，可以按名称或键位搜索。"
+            )
         } else {
-            List(profile.macros) { macro in
-                HStack(spacing: 12) {
-                    Toggle("", isOn: Binding(
-                        get: { macro.isEnabled },
-                        set: { _ in onToggleEnabled(macro) }
-                    ))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .help(macro.isEnabled ? "已启用，点击禁用" : "已禁用，点击启用")
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            if runningMacroId == macro.id {
-                                Image(systemName: "record.circle.fill")
-                                    .foregroundStyle(.red)
-                                    .font(.caption)
-                            }
-                            Text(macro.label)
-                                .font(.headline)
-                        }
-                        Text(macro.displayShortcut)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+            List(filtered) { macro in
+                ActionRow(
+                    title: macro.label,
+                    trigger: .init(macro: macro),
+                    summary: macro.stepSummary,
+                    state: runningMacroIds.contains(macro.id) ? .running : (macro.isEnabled ? .enabled : .disabled),
+                    badges: { multiClickBadge(for: macro) },
+                    onToggleEnabled: { onToggleEnabled(macro) },
+                    onEdit: { onEdit(macro) },
+                    onDuplicate: onDuplicate.map { dup in { dup(macro) } },
+                    onDelete: { onDelete(macro) }
+                )
+                .contextMenu {
+                    Button("编辑") { onEdit(macro) }
+                    Button(macro.isEnabled ? "禁用" : "启用") { onToggleEnabled(macro) }
+                    if let onDuplicate {
+                        Button("复制") { onDuplicate(macro) }
                     }
-
-                    Spacer()
-
-                    Text(macro.stepSummary)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    Button("编辑") {
-                        onEdit(macro)
-                    }
-
-                    Button("删除", role: .destructive) {
-                        onDelete(macro)
-                    }
+                    Divider()
+                    Button("删除", role: .destructive) { onDelete(macro) }
                 }
-                .opacity(macro.isEnabled ? 1.0 : 0.55)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
             }
-            .listStyle(.inset)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .animation(Theme.Motion.standard(reduceMotion), value: profile.macros)
+        }
+    }
+
+    private var filtered: [MacroAction] {
+        Self.filter(profile.macros, searchText: searchText)
+    }
+
+    static func filter(_ macros: [MacroAction], searchText: String) -> [MacroAction] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return macros }
+        return macros.filter {
+            $0.label.localizedCaseInsensitiveContains(query) ||
+            $0.displayShortcut.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    @ViewBuilder
+    private func multiClickBadge(for macro: MacroAction) -> some View {
+        let maxClicks = macro.steps.map(\.clickCount).max() ?? 1
+        if maxClicks > 1 {
+            Badge(text: "连击 ×\(maxClicks)", color: Theme.Palette.accent)
+                .help("存在同一位置连点多次的步骤")
+        }
+    }
+}
+
+// MARK: - KeyCapView.Trigger 便捷构造
+
+extension KeyCapView.Trigger {
+    init(mapping: KeyMapping) {
+        switch mapping.triggerType {
+        case .keyboard: self = .keyboard(keyCode: mapping.keyCode, modifiers: mapping.modifiers)
+        case .mouseRight: self = .mouseRight
+        case .mouseOther: self = .mouseOther(buttonNumber: mapping.mouseButtonNumber)
+        }
+    }
+
+    init(macro: MacroAction) {
+        switch macro.triggerType {
+        case .keyboard: self = .keyboard(keyCode: macro.keyCode, modifiers: macro.modifiers)
+        case .mouseRight: self = .mouseRight
+        case .mouseOther: self = .mouseOther(buttonNumber: macro.mouseButtonNumber)
         }
     }
 }

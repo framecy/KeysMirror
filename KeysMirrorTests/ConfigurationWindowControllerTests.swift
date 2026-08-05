@@ -7,7 +7,7 @@ import AppKit
 /// 下次 `show()` 调 `makeKeyAndOrderFront` 触发 objc_msgSend 野指针闪退。
 @MainActor
 final class ConfigurationWindowControllerTests: XCTestCase {
-    private let windowTitle = "KeysMirror 配置"
+    private let windowTitle = "KeysMirror"
 
     override func tearDown() async throws {
         // 每个用例结束时关掉窗口，避免互相污染
@@ -100,6 +100,7 @@ final class ConfigurationWindowControllerTests: XCTestCase {
     }
 
     private func findConfigurationWindow() -> NSWindow? {
-        NSApp.windows.first { $0.title.hasPrefix("KeysMirror 配置") }
+        // 标题现在是「KeysMirror v1.x」（版本号随构建变化），只匹配前缀
+        NSApp.windows.first { $0.title.hasPrefix("KeysMirror") }
     }
 }

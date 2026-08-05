@@ -101,6 +101,52 @@ final class WindowLocator {
         CoordinateConverter.relativePoint(from: screenPoint, in: windowFrame)
     }
 
+    /// `point` 处最上层的普通窗口是否属于 pid 指定的进程。
+    ///
+    /// 宏在非前台执行时，点击走的仍是 session 层——事件由 Window Server 按「光标位置下的窗口」
+    /// 路由。平铺布局本身不重叠，但用户随时可能把别的窗口拖到游戏上面，那时点击就会打进
+    /// 那个窗口（可能是浏览器的发送、编辑器的删除按钮）。每次点击前先确认目标真的露在最上层。
+    ///
+    /// 用 CGWindowList 而不是 AX 命中测试：AX 要与目标进程同步 IPC 并阻塞主线程，
+    /// 宏反复调用会让用户的鼠标发卡——而「不影响鼠标操作」正是后台跑宏的前提。
+    /// CGWindowList 由 Window Server 直接返回，不进目标进程。
+    /// - Returns: nil 表示目标窗口在该点可见；否则返回挡在上面的窗口所属 app 名，供日志指名道姓。
+    func occludingApp(at point: CGPoint, ownedBy pid: pid_t) -> String? {
+        guard let infos = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else {
+            return nil   // 拿不到窗口列表时不阻拦，避免误杀整个宏
+        }
+
+        // KeysMirror 自己的浮层（HUD / 录制高亮 / 位置遮罩）都是 ignoresMouseEvents，
+        // 点击会穿透过去，不构成真实遮挡。它们的 level 通常是 .statusBar（layer≠0）已被下面
+        // 的 layer 过滤挡掉，这里再按窗口号精确排除一次，避免将来有人改了 level 就出错。
+        let clickThrough = Set(NSApp.windows.filter { $0.ignoresMouseEvents }.map { $0.windowNumber })
+
+        // 返回顺序即前后顺序（靠前 = 更上层）。取第一个命中的普通窗口即可判定遮挡。
+        for info in infos {
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { continue }
+            if let number = (info[kCGWindowNumber as String] as? NSNumber)?.intValue,
+               clickThrough.contains(number) { continue }
+            guard let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict) else { continue }
+            guard bounds.contains(point) else { continue }
+
+            if (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid { return nil }
+            return (info[kCGWindowOwnerName as String] as? String) ?? "未知窗口"
+        }
+        // 该点没有任何普通窗口——目标窗口可能已最小化 / 移走，按遮挡处理更安全
+        return "无窗口命中"
+    }
+
+    /// 让 frame 缓存立即失效。
+    /// 问道这类 app 的 AX 通知注册成功却从不推送（日志可见 code=-25211），窗口被移动 / 缩放时
+    /// 缓存不会被动失效，只能靠 TTL 兜底——后台跑宏时这最长 60s 的陈旧期会让点击系统性偏移。
+    func invalidateFrameCache() {
+        cachedFrame = nil
+    }
+
     func frameContainingPoint(_ screenPoint: CGPoint, for bundleIdentifier: String) -> CGRect? {
         guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
             return nil

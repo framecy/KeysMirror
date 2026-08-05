@@ -135,26 +135,25 @@ final class KeyInterceptor {
 
         let buttonNumber = Int(event.getIntegerValueField(.mouseEventButtonNumber))
 
-        // 宏匹配优先：先看是否正好是当前运行宏的触发键（→ 停），再看 profile.macros 是否命中（→ 启动）
-        if let runningId = MacroRunner.shared.runningMacroId,
-           let runningMacro = profile.macros.first(where: { $0.id == runningId }),
-           Self.triggerMatches(event: event, type: type, keyCode: keyCode, eventModifiers: eventModifiers, buttonNumber: buttonNumber,
-                          triggerType: runningMacro.triggerType, mappingKeyCode: runningMacro.keyCode,
-                          mappingModifiers: runningMacro.modifiers, mappingButton: runningMacro.mouseButtonNumber) {
-            MacroRunner.shared.stop(reason: "用户再按触发键")
-            StatusBarController.shared.flashActivity()
-            return runningMacro.blockInput ? nil : Unmanaged.passRetained(event)
-        }
-
+        // 宏匹配优先。同一个触发键既启动也停止（各条宏独立开关，互不影响，可同时跑多条）。
+        // 匹配时不过滤 isEnabled：运行中的宏可能被临时禁用，那时仍需能用原键停下来。
         if let macro = profile.macros.first(where: { macro in
-            macro.isEnabled && Self.triggerMatches(
+            Self.triggerMatches(
                 event: event, type: type, keyCode: keyCode, eventModifiers: eventModifiers, buttonNumber: buttonNumber,
                 triggerType: macro.triggerType, mappingKeyCode: macro.keyCode,
                 mappingModifiers: macro.modifiers, mappingButton: macro.mouseButtonNumber
             )
         }) {
-            MacroRunner.shared.toggle(macro, profile: profile)
-            return macro.blockInput ? nil : Unmanaged.passRetained(event)
+            if MacroRunner.shared.isRunning(macro.id) {
+                MacroRunner.shared.stop(macroId: macro.id, reason: "用户再按触发键")
+                StatusBarController.shared.flashActivity()
+                return macro.blockInput ? nil : Unmanaged.passRetained(event)
+            }
+            if macro.isEnabled {
+                MacroRunner.shared.toggle(macro, profile: profile)
+                return macro.blockInput ? nil : Unmanaged.passRetained(event)
+            }
+            // 已禁用且未运行 → 不启动，继续往下走 mapping 匹配
         }
 
         let matchingMapping = profile.mappings.first { mapping in
@@ -213,12 +212,19 @@ final class KeyInterceptor {
             // 模拟点击
             clickSimulator.leftClick(at: clickPoint, targetApp: frontApp)
 
-            // 结构化触发记录（UI 触发记录 tab 直接渲染）
+            // 结构化触发记录（诊断窗直接渲染）
             logger.recordTrigger(
                 label: mapping.label,
                 trigger: mapping.displayShortcut,
                 clickPoint: clickPoint,
                 blockInput: mapping.blockInput
+            )
+
+            // 通知 overlay 在对应指示器上播放水波（游戏里看得见的反馈）
+            NotificationCenter.default.post(
+                name: .mappingDidTrigger,
+                object: nil,
+                userInfo: [MappingTriggerUserInfo.mappingId: mapping.id]
             )
             
             // 根据 blockInput 决定是否拦截按键

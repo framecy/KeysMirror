@@ -7,50 +7,77 @@ extension Notification.Name {
     static let macroRunStateDidChange = Notification.Name("KeysMirror.MacroRunStateDidChange")
 }
 
-/// 串行执行单个宏：同一时刻只允许一个宏在运行。
+/// 一条正在运行的宏的对外快照（菜单栏滚动条直接消费）。
+struct RunningMacro: Identifiable, Equatable {
+    let id: UUID
+    let label: String
+    let bundleId: String
+    /// 已完成的轮次
+    var iteration: Int
+    /// 总轮次；nil = 无限循环（UI 显示 ∞）
+    var total: Int?
+}
+
+/// 并行执行多条宏：每条宏一个独立 Task，互不影响。
 /// 取消通过 `Task.cancel()` 实现，长 sleep 也会立即结束。
 @MainActor
 final class MacroRunner: ObservableObject {
     static let shared = MacroRunner()
 
-    @Published private(set) var runningMacroId: UUID?
-    @Published private(set) var runningMacroLabel: String?
-    @Published private(set) var runningBundleId: String?
+    /// 运行中的宏，按启动先后排列（菜单栏滚动展示依赖这个顺序保持稳定）。
+    @Published private(set) var running: [RunningMacro] = []
 
-    private var task: Task<Void, Never>?
+    private var tasks: [UUID: Task<Void, Never>] = [:]
     private let logger = AppLogger.shared
 
+    var isAnyRunning: Bool { !running.isEmpty }
+
+    func isRunning(_ macroId: UUID) -> Bool {
+        running.contains { $0.id == macroId }
+    }
+
     private init() {
-        // 前台 app 切换时如果离开了宏所属的 app，自动停止
+        // 目标 app 退出 → 立即停，避免对着已消失的窗口空转
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
-            selector: #selector(handleFrontAppChange),
-            name: NSWorkspace.didActivateApplicationNotification,
+            selector: #selector(handleAppTerminated),
+            name: NSWorkspace.didTerminateApplicationNotification,
             object: nil
         )
     }
 
     // MARK: - Public API
 
-    /// 同 macro 再按 → 停；不同 → 停旧启新；空闲 → 启动。
+    /// 同一条宏再按其触发键 → 停；否则启动。各条宏互不干扰，可同时运行多条。
     func toggle(_ macro: MacroAction, profile: AppProfile) {
-        if let runningId = runningMacroId, runningId == macro.id {
-            stop(reason: "用户再按触发键")
+        if isRunning(macro.id) {
+            stop(macroId: macro.id, reason: "用户再按触发键")
             return
         }
         startInternal(macro, profile: profile)
     }
 
-    func stop(reason: String? = nil) {
-        guard task != nil else { return }
-        task?.cancel()
-        task = nil
-        if let label = runningMacroLabel {
+    /// 停止指定的一条宏。
+    func stop(macroId: UUID, reason: String? = nil) {
+        guard let task = tasks.removeValue(forKey: macroId) else { return }
+        task.cancel()
+        if let label = running.first(where: { $0.id == macroId })?.label {
             logger.log("【宏停止】\(label)\(reason.map { "（\($0)）" } ?? "")", type: "ACTION")
         }
-        runningMacroId = nil
-        runningMacroLabel = nil
-        runningBundleId = nil
+        running.removeAll { $0.id == macroId }
+        NotificationCenter.default.post(name: .macroRunStateDidChange, object: self)
+    }
+
+    /// 停止全部宏（退出 / 休眠唤醒 / 菜单栏「全部停止」）。
+    func stopAll(reason: String? = nil) {
+        guard !tasks.isEmpty else { return }
+        for id in Array(tasks.keys) {
+            tasks.removeValue(forKey: id)?.cancel()
+        }
+        for macro in running {
+            logger.log("【宏停止】\(macro.label)\(reason.map { "（\($0)）" } ?? "")", type: "ACTION")
+        }
+        running.removeAll()
         NotificationCenter.default.post(name: .macroRunStateDidChange, object: self)
     }
 
@@ -106,32 +133,75 @@ final class MacroRunner: ObservableObject {
     // MARK: - Internal
 
     private func startInternal(_ macro: MacroAction, profile: AppProfile) {
-        if task != nil { stop(reason: "切换到新宏") }
-
         guard !macro.steps.isEmpty else {
             logger.log("宏 [\(macro.label)] 没有步骤，不执行", type: "WARN")
             return
         }
 
-        runningMacroId = macro.id
-        runningMacroLabel = macro.label
-        runningBundleId = profile.bundleIdentifier
+        let totalIterations = Self.computeStepCount(repeatCount: macro.repeatCount)
+        running.append(RunningMacro(
+            id: macro.id,
+            label: macro.label,
+            bundleId: profile.bundleIdentifier,
+            iteration: 0,
+            total: totalIterations == Int.max ? nil : totalIterations
+        ))
         NotificationCenter.default.post(name: .macroRunStateDidChange, object: self)
 
-        let totalIterations = Self.computeStepCount(repeatCount: macro.repeatCount)
-        let captured = macro
+        logger.log("【宏启动】\(macro.label) | \(macro.steps.count) 步 × \(macro.repeatCount == 0 ? "无限" : "\(totalIterations)") 次 | \(profile.appName)", type: "ACTION")
+
+        let macroId = macro.id
         let bundleId = profile.bundleIdentifier
-        let appName = profile.appName
-
-        logger.log("【宏启动】\(captured.label) | \(captured.steps.count) 步 × \(captured.repeatCount == 0 ? "无限" : "\(totalIterations)") 次 | \(appName)", type: "ACTION")
-
-        task = Task { [weak self] in
-            await self?.run(macro: captured, totalIterations: totalIterations, bundleId: bundleId)
+        tasks[macroId] = Task { [weak self] in
+            await self?.run(macroId: macroId, bundleId: bundleId)
         }
     }
 
-    private func run(macro: MacroAction, totalIterations: Int, bundleId: String) async {
-        for iteration in 0..<totalIterations {
+    /// 每轮开始时重新从 store 读取宏定义——运行中编辑并保存的新配置会在下一轮生效。
+    /// 不做「每步重读」：那样同一轮内的步骤可能来自不同版本的配置，行为难以预期。
+    private func currentMacro(id: UUID, bundleId: String) -> MacroAction? {
+        MappingStore.shared.profiles
+            .first { $0.bundleIdentifier.lowercased() == bundleId.lowercased() }?
+            .macros.first { $0.id == id }
+    }
+
+    private func run(macroId: UUID, bundleId: String) async {
+        var iteration = 0
+
+        while !Task.isCancelled {
+            // 重新取配置：支持运行中编辑；宏被删除 / 禁用则自然停止
+            guard let macro = currentMacro(id: macroId, bundleId: bundleId) else {
+                stop(macroId: macroId, reason: "宏已被删除")
+                return
+            }
+            guard macro.isEnabled else {
+                stop(macroId: macroId, reason: "宏已被禁用")
+                return
+            }
+            guard !macro.steps.isEmpty else {
+                stop(macroId: macroId, reason: "宏已没有步骤")
+                return
+            }
+
+            // 轮次上限同样每轮重算，改了重复次数也能即时反映
+            let totalIterations = Self.computeStepCount(repeatCount: macro.repeatCount)
+            if iteration >= totalIterations {
+                logger.log("【宏完成】\(macro.label)（执行 \(totalIterations) 次）", type: "ACTION")
+                stop(macroId: macroId)
+                return
+            }
+            iteration += 1
+            updateProgress(macroId: macroId, iteration: iteration, totalIterations: totalIterations)
+
+            // 每轮开始刷新一次窗口位置即可。原先放在 fireStep 里逐步刷新，等于每步都强制一次
+            // 主线程同步 AX 查询——对 AX 无响应的 app（阴阳师 / 问道）会长时间阻塞主线程，
+            // 表现为整个 KeysMirror 界面点不动。窗口在一轮之内几乎不可能被移动，按轮刷新足够。
+            WindowLocator.shared.invalidateFrameCache()
+
+            // 无条件让出一次：若某个宏的所有步骤延迟都是 0，下面的 for 里就没有任何 await，
+            // 这个 MainActor 隔离的循环会永不挂起、独占主线程，整个 App 直接冻死。
+            await Task.yield()
+
             for (index, step) in macro.steps.enumerated() {
                 if Task.isCancelled { return }
 
@@ -147,25 +217,22 @@ final class MacroRunner: ObservableObject {
                 fireStep(
                     step,
                     stepIndex: index,
-                    iteration: iteration,
+                    iteration: iteration - 1,
                     totalIterations: totalIterations,
                     macro: macro,
                     bundleId: bundleId
                 )
             }
         }
+    }
 
-        // 自然结束
-        await MainActor.run {
-            if self.runningMacroId == macro.id {
-                self.logger.log("【宏完成】\(macro.label)（执行 \(totalIterations) 次）", type: "ACTION")
-                self.runningMacroId = nil
-                self.runningMacroLabel = nil
-                self.runningBundleId = nil
-                self.task = nil
-                NotificationCenter.default.post(name: .macroRunStateDidChange, object: self)
-            }
-        }
+    private func updateProgress(macroId: UUID, iteration: Int, totalIterations: Int) {
+        guard let index = running.firstIndex(where: { $0.id == macroId }) else { return }
+        running[index].iteration = iteration
+        running[index].total = totalIterations == Int.max ? nil : totalIterations
+        // 必须广播：菜单栏跑马灯不是 SwiftUI，订阅不到 @Published 的变化，
+        // 只认这个通知。漏了它次数就永远停在启动时的值（表现为「状态栏数据不刷新」）。
+        NotificationCenter.default.post(name: .macroRunStateDidChange, object: self)
     }
 
     private func fireStep(
@@ -176,14 +243,19 @@ final class MacroRunner: ObservableObject {
         macro: MacroAction,
         bundleId: String
     ) {
-        // 前台 app 切走 → 静默停
-        guard let frontApp = NSWorkspace.shared.frontmostApplication,
-              frontApp.bundleIdentifier?.lowercased() == bundleId.lowercased() else {
-            stop(reason: "目标 app 不在前台")
+        // 目标 app 不再需要在前台——session 层事件按「光标位置下的窗口」路由，
+        // 实测（问道 / 阴阳师）游戏在后台也能收到点击且不会抢走焦点，
+        // 因此宏可以在窗口平铺、用户操作别的 app 时继续跑。这里只要求进程还活着。
+        guard let targetApp = AppResolver.shared.runningApplication(bundleIdentifier: bundleId) else {
+            stop(macroId: macro.id, reason: "目标 app 已退出")
             return
         }
 
+        // 注意：这里**不能**强制刷新窗口位置缓存。AX 查询是主线程同步调用，对 AX 无响应的
+        // app（阴阳师 / 问道）会长时间阻塞；逐步刷新会把主线程占满，整个 App 界面点不动。
+        // 缓存的失效改为每轮一次，见 run() 里的 invalidateFrameCache。
         guard let windowFrame = WindowLocator.shared.focusedWindowFrame(for: bundleId) else {
+            // 窗口最小化 / 隐藏时读不到 frame：跳过本步而不是停止，窗口恢复后能自然续跑
             logger.log("宏 [\(macro.label)] 第 \(stepIndex + 1) 步：找不到窗口，跳过", type: "WARN")
             return
         }
@@ -211,27 +283,42 @@ final class MacroRunner: ObservableObject {
             in: windowFrame
         )
 
-        // 安全网：点击点必须落在窗口内（避免误唤后台 app）
+        // 安全网 1：点击点必须落在窗口内（避免误唤后台 app）
         guard windowFrame.contains(clickPoint) else {
             logger.log("宏 [\(macro.label)] 第 \(stepIndex + 1) 步：点击点 (\(Int(clickPoint.x)),\(Int(clickPoint.y))) 落在窗口 \(Int(windowFrame.width))x\(Int(windowFrame.height)) 外，已跳过", type: "WARN")
             return
         }
 
+        // 安全网 2：目标必须真的露在最上层。宏不再要求前台，用户随时可能把别的窗口拖到
+        // 游戏上面——session 层点击会直接打进那个窗口（浏览器的发送、编辑器的删除都可能被点到）。
+        if let occluder = WindowLocator.shared.occludingApp(at: clickPoint, ownedBy: targetApp.processIdentifier) {
+            logger.log("宏 [\(macro.label)] 第 \(stepIndex + 1) 步：点击点 (\(Int(clickPoint.x)),\(Int(clickPoint.y))) 被「\(occluder)」遮挡，已跳过", type: "WARN")
+            return
+        }
+
         let iterText = totalIterations == Int.max ? "∞" : "\(iteration + 1)/\(totalIterations)"
         let driftText = step.driftPercent > 0 ? " 漂移\(String(format: "%.1f", step.driftPercent))%" : ""
-        logger.log("【宏步骤】[\(macro.label)] \(iterText) - 第 \(stepIndex + 1)/\(macro.steps.count) 步\(driftText) → 点击 (\(Int(clickPoint.x)),\(Int(clickPoint.y)))", type: "ACTION")
+        // 连击共用同一坐标（漂移只在进入本步时算一次），否则双击会被目标 app 拆成两次单击
+        let clickCount = max(1, step.clickCount)
+        let clickText = clickCount > 1 ? " ×\(clickCount)" : ""
+        logger.log("【宏步骤】[\(macro.label)] \(iterText) - 第 \(stepIndex + 1)/\(macro.steps.count) 步\(driftText) → 点击 (\(Int(clickPoint.x)),\(Int(clickPoint.y)))\(clickText)", type: "ACTION")
 
-        ClickSimulator.shared.leftClick(at: clickPoint, targetApp: frontApp)
+        // ClickSimulator 内部走串行队列，连续调用天然依次投递，无需额外间隔
+        for _ in 0..<clickCount {
+            // 宏可能在用户操作别的 app 时后台执行，投递期间屏蔽物理鼠标，
+            // 避免用户手上的鼠标移动把这一击挤掉
+            ClickSimulator.shared.leftClick(at: clickPoint, targetApp: targetApp, suppressLocalInput: true, tagTargetProcess: true)
+        }
         StatusBarController.shared.flashActivity()
     }
 
     // MARK: - 前台变化
 
-    @objc private func handleFrontAppChange(_ note: Notification) {
-        guard let runningBundleId else { return }
-        let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier?.lowercased()
-        if frontBundle != runningBundleId.lowercased() {
-            stop(reason: "前台切走")
+    @objc private func handleAppTerminated(_ note: Notification) {
+        guard let quit = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              let quitBundle = quit.bundleIdentifier?.lowercased() else { return }
+        for macro in running where macro.bundleId.lowercased() == quitBundle {
+            stop(macroId: macro.id, reason: "目标 app 已退出")
         }
     }
 }

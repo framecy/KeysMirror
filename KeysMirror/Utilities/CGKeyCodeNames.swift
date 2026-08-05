@@ -44,4 +44,40 @@ enum CGKeyCodeNames {
         }
         return "\(modifierText)+\(name(for: keyCode))"
     }
+
+    /// 拆成一个个键帽用的短符号：`[⌃, ⇧, K]`。
+    /// 顺序与 macOS 惯例一致（⌃⌥⇧⌘），最后一个元素永远是主键。
+    /// UI 层（KeyCapView）据此渲染分离的键帽，见 docs/UI-Redesign.md 第 5 节。
+    static func capSymbols(for keyCode: UInt16, modifiers: UInt64) -> [String] {
+        let flags = CGEventFlags(rawValue: modifiers)
+        var caps: [String] = []
+        if flags.contains(.maskSecondaryFn) { caps.append("fn") }
+        if flags.contains(.maskControl)     { caps.append("⌃") }
+        if flags.contains(.maskAlternate)   { caps.append("⌥") }
+        if flags.contains(.maskShift)       { caps.append("⇧") }
+        if flags.contains(.maskCommand)     { caps.append("⌘") }
+        caps.append(shortKeyName(for: keyCode))
+        return caps
+    }
+
+    /// 键帽上的紧凑名：长名换成符号，其余沿用 `name(for:)`。
+    static func shortKeyName(for keyCode: UInt16) -> String {
+        switch keyCode {
+        case 0x24: return "↩"
+        case 0x30: return "⇥"
+        case 0x33: return "⌫"
+        case 0x35: return "esc"
+        case 0x31: return "space"
+        case 0x73: return "↖"
+        case 0x77: return "↘"
+        case 0x74: return "⇞"
+        case 0x79: return "⇟"
+        case 0x75: return "⌦"
+        case 0x7B: return "←"
+        case 0x7C: return "→"
+        case 0x7D: return "↓"
+        case 0x7E: return "↑"
+        default: return name(for: keyCode)
+        }
+    }
 }

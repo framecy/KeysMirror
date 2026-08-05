@@ -175,6 +175,16 @@ macOS 在系统睡眠期间可能销毁 CGEventTap。KeysMirror 已监听屏幕�
 
 ## 更新日志
 
+### v1.7.0
+- **界面重构**：全面替换旧的单窗口配置界面（`ConfigurationWindow`/`MappingEditorView`/`MacroEditorView` 已删除），新增独立的主窗口（`MainWindow`/`MainWindowController`）、侧栏 + Inspector 布局（`AppSidebar`/`MappingInspector`/`MacroInspector`）、独立宏编辑窗口（`MacroEditorWindowController`）、统一设计系统（`Theme`）、首次运行引导（`OnboardingView`）、菜单栏下拉面板（`MenuBarPanel`/`MacroMarqueeView`）与诊断窗口（`DiagnosticsWindow`）
+- **新增**：录制体验升级——目标窗口描边高亮（`TargetWindowHighlight`）、录制会话状态管理（`RecordingSession`）、录制 HUD 独立化
+- **新增**：全局撤销/重做（`UndoCoordinator`），删除映射/宏/Profile 均可 `⌘Z` 撤销
+- **新增**：触发键占用可视化（`TriggerOccupancy`），保存时提示按键冲突
+- **新增**：启动活跃度审计（`ActivationAuditor`）与宏步骤序列录制器（`MacroSequenceRecorder`）
+- **设计规范**：全局不使用材质/毛玻璃与常驻半透明；间距、圆角、字号统一收敛到 `Theme.Metrics` token
+- **测试**：新增 Inspector、MainWindow、UndoCoordinator、MacroSequenceRecorder 等测试覆盖（154/154 全过）
+- 详见 [docs/UI-Redesign.md](docs/UI-Redesign.md) 完整设计文档与落地后自查记录
+
 ### v1.6.7
 - **修复**：PlayCover 部分 iOS-on-Mac 应用（如阴阳师 `com.netease.onmyoji`）因 `Info.plist` 缺少 `LSRequiresIPhoneOS` 字段而被误判为原生 Mac App 导致点击无响应。现增加 `DTPlatformName` 及 `UIDeviceFamily` 后备检测
 - **构建**：`build.sh` 增加固定自签名证书支持（`KeysMirror Dev`），避免每次重新编译导致的 macOS 辅助功能权限丢失

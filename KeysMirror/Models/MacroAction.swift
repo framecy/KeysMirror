@@ -94,12 +94,23 @@ struct MacroStep: Codable, Identifiable, Hashable {
     /// 避免每次点在完全相同的像素上、也能覆盖「推进对话 / 连续确认」这类有一定面积的按钮区。
     /// 旧数据缺字段时解码为 0（向后兼容，行为与原来完全一致）。
     var driftPercent: Double
+    /// 本步在同一位置连续点击的次数。1 = 普通单击；2/3 = 录制到的双击 / 三击。
+    /// 连击共用同一个（漂移后的）坐标，否则双击会被目标 app 拆成两次单击。
+    /// 旧数据缺字段时解码为 1。
+    var clickCount: Int
 
-    init(id: UUID = UUID(), delaySeconds: Double = 0, position: MacroStepPosition, driftPercent: Double = 0) {
+    init(
+        id: UUID = UUID(),
+        delaySeconds: Double = 0,
+        position: MacroStepPosition,
+        driftPercent: Double = 0,
+        clickCount: Int = 1
+    ) {
         self.id = id
         self.delaySeconds = delaySeconds
         self.position = position
         self.driftPercent = driftPercent
+        self.clickCount = clickCount
     }
 
     init(from decoder: Decoder) throws {
@@ -108,6 +119,7 @@ struct MacroStep: Codable, Identifiable, Hashable {
         self.delaySeconds = try c.decodeIfPresent(Double.self, forKey: .delaySeconds) ?? 0
         self.position = try c.decode(MacroStepPosition.self, forKey: .position)
         self.driftPercent = try c.decodeIfPresent(Double.self, forKey: .driftPercent) ?? 0
+        self.clickCount = max(1, try c.decodeIfPresent(Int.self, forKey: .clickCount) ?? 1)
     }
 }
 

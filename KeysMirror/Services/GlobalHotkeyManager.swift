@@ -1,61 +1,84 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// 注册一个全局快捷键，触发时调用 `onTrigger`。
+/// 注册全局快捷键，触发时调用对应的回调。
 /// 使用 Carbon RegisterEventHotKey（仍然是当前最稳的全局热键 API，
 /// 不需要辅助功能权限以外的额外授权）。
+///
+/// v1.6 起支持**多个**热键（按 slot 区分）：
+/// - `.toggleMappings`：全局启用 / 禁用映射
+/// - `.cycleHUD`：游戏内 HUD 完整 / 紧凑 / 隐藏三态循环
 @MainActor
 final class GlobalHotkeyManager {
     static let shared = GlobalHotkeyManager()
 
-    var onTrigger: (() -> Void)?
+    /// 热键槽位。rawValue 直接作为 Carbon 的 hotKeyID.id，必须唯一且非 0。
+    enum Slot: UInt32, CaseIterable {
+        case toggleMappings = 1
+        case cycleHUD = 2
+    }
 
-    private var hotKeyRef: EventHotKeyRef?
+    /// 兼容旧调用点：等价于 `handler(for: .toggleMappings)`
+    var onTrigger: (() -> Void)? {
+        get { handlers[.toggleMappings] }
+        set { handlers[.toggleMappings] = newValue }
+    }
+
+    private var handlers: [Slot: () -> Void] = [:]
+    private var hotKeyRefs: [Slot: EventHotKeyRef] = [:]
     private var eventHandler: EventHandlerRef?
+
     private static let signature: OSType = {
         // 'KMTG' (KeysMirror Toggle)
         let chars = Array("KMTG".utf8)
         return (OSType(chars[0]) << 24) | (OSType(chars[1]) << 16) | (OSType(chars[2]) << 8) | OSType(chars[3])
     }()
-    private static let hotKeyID = EventHotKeyID(signature: GlobalHotkeyManager.signature, id: 1)
 
     private init() {}
 
-    /// 注册指定 hotkey；先反注册再绑定，避免重复 handler。
-    func register(_ config: HotkeyConfig) -> Bool {
-        unregister()
+    func setHandler(_ handler: @escaping () -> Void, for slot: Slot) {
+        handlers[slot] = handler
+    }
 
+    /// 注册指定 slot 的 hotkey；先反注册再绑定，避免重复 handler。
+    @discardableResult
+    func register(_ config: HotkeyConfig, for slot: Slot = .toggleMappings) -> Bool {
+        unregister(slot)
         installHandlerIfNeeded()
 
         var ref: EventHotKeyRef?
         let status = RegisterEventHotKey(
             UInt32(config.keyCode),
             cgModifiersToCarbon(config.modifiers),
-            Self.hotKeyID,
+            EventHotKeyID(signature: Self.signature, id: slot.rawValue),
             GetApplicationEventTarget(),
             0,
             &ref
         )
         guard status == noErr, let ref else {
-            AppLogger.shared.log("RegisterEventHotKey 失败 (status=\(status))，全局热键未生效", type: "WARN")
+            AppLogger.shared.log("RegisterEventHotKey 失败 (slot=\(slot), status=\(status))，全局热键未生效", type: "WARN")
             return false
         }
-        hotKeyRef = ref
-        AppLogger.shared.log("全局热键已注册: \(CGKeyCodeNames.shortcutLabel(for: config.keyCode, modifiers: config.modifiers))")
+        hotKeyRefs[slot] = ref
+        AppLogger.shared.log("全局热键已注册 [\(slot)]: \(CGKeyCodeNames.shortcutLabel(for: config.keyCode, modifiers: config.modifiers))")
         return true
     }
 
-    func unregister() {
-        if let ref = hotKeyRef {
+    func unregister(_ slot: Slot = .toggleMappings) {
+        if let ref = hotKeyRefs[slot] {
             UnregisterEventHotKey(ref)
-            hotKeyRef = nil
+            hotKeyRefs.removeValue(forKey: slot)
         }
     }
 
-    /// 完整拆除：反注册热键并卸载 Carbon event handler。
+    func unregisterAll() {
+        for slot in Slot.allCases { unregister(slot) }
+    }
+
+    /// 完整拆除：反注册所有热键并卸载 Carbon event handler。
     /// 仅退出时调用——临时关闭热键功能用 `unregister()`，handler 留着复用更省。
     func teardown() {
-        unregister()
+        unregisterAll()
         if let handler = eventHandler {
             RemoveEventHandler(handler)
             eventHandler = nil
@@ -91,12 +114,14 @@ final class GlobalHotkeyManager {
             nil,
             &receivedID
         )
-        guard status == noErr, receivedID.signature == GlobalHotkeyManager.signature else {
+        guard status == noErr,
+              receivedID.signature == GlobalHotkeyManager.signature,
+              let slot = Slot(rawValue: receivedID.id) else {
             return noErr
         }
         let mgr = Unmanaged<GlobalHotkeyManager>.fromOpaque(userData).takeUnretainedValue()
         DispatchQueue.main.async {
-            mgr.onTrigger?()
+            mgr.handlers[slot]?()
         }
         return noErr
     }
