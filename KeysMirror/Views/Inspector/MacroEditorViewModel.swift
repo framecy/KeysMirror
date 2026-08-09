@@ -117,8 +117,7 @@ struct EditableStep: Identifiable, Hashable {
 
 /// 宏编辑模型。Inspector 用 `autosave: true` 即时保存（见 MappingEditorViewModel 的同名机制）。
 @MainActor
-final class MacroEditorViewModel: ObservableObject {
-    @Published var label: String
+final class MacroEditorViewModel: TriggerEditorViewModel {
     @Published var blockInput: Bool
     /// 重复模式**显式存储**。
     /// 早先是从 `repeatCountText` 反推（<=1 就算「单次」），于是输入框里敲个 1
@@ -131,19 +130,14 @@ final class MacroEditorViewModel: ObservableObject {
     }
 
     @Published var steps: [EditableStep]
-    @Published var recordedKeyCode: UInt16?
-    @Published var recordedModifiers: UInt64
-    @Published var recordedTriggerType: TriggerType
-    @Published var recordedMouseButtonNumber: Int?
-    @Published var isRecordingTrigger = false
     @Published var recordingStepId: UUID?
     @Published var isRecordingSequence = false
     @Published var recordedClickCount = 0
-    @Published var justCaptured = false
-    @Published var message: String?
 
-    let profile: AppProfile
     private(set) var existingMacro: MacroAction?
+
+    /// 宏的自动命名带前缀，便于和同名映射区分（「宏 F1」而不是「F1」）
+    override var autoLabelPrefix: String { "宏 " }
 
     /// 草稿第一次成功保存、拿到真实 id 时触发一次。
     /// 供 `MacroEditorWindowController` 把窗口从临时的 draft key 重绑到 macro id，
@@ -168,16 +162,11 @@ final class MacroEditorViewModel: ObservableObject {
     private var stepsUndoCancellable: AnyCancellable?
     private var isApplyingStepsUndo = false
 
-    private let appResolver = AppResolver.shared
-    private let pointRecorder = PointRecorder.shared
-    private let triggerRecorder = TriggerRecorder.shared
     private let sequenceRecorder = MacroSequenceRecorder.shared
 
     init(profile: AppProfile, existingMacro: MacroAction?, autosave: Bool = false) {
-        self.profile = profile
         self.existingMacro = existingMacro
         self.autosave = autosave
-        self.label = existingMacro?.label ?? ""
         self.blockInput = existingMacro?.blockInput ?? true
         let count = existingMacro?.repeatCount ?? 1
         if count == 0 {
@@ -191,10 +180,17 @@ final class MacroEditorViewModel: ObservableObject {
             self.repeatCountText = count
         }
         self.steps = (existingMacro?.steps ?? []).map { EditableStep(step: $0) }
+
+        super.init(profile: profile)
+
+        // 基类字段的初值必须在 super.init 之后写；也必须在下面接 cancellable 之前写完，
+        // 否则初始化本身会被 dirtyCancellable 当成一次用户编辑，一开窗口就显示「未保存」。
+        self.label = existingMacro?.label ?? ""
         self.recordedKeyCode = existingMacro?.keyCode
         self.recordedModifiers = existingMacro?.modifiers ?? 0
         self.recordedTriggerType = existingMacro?.triggerType ?? .keyboard
         self.recordedMouseButtonNumber = existingMacro?.mouseButtonNumber
+
         if !autosave {
             // 非 autosave：任何改动都标脏。判空再置位，否则会和 objectWillChange 互相触发成死循环。
             dirtyCancellable = objectWillChange
@@ -212,36 +208,6 @@ final class MacroEditorViewModel: ObservableObject {
     // MARK: - 派生状态
 
     var isDraft: Bool { existingMacro == nil }
-
-    var shortcutText: String {
-        switch recordedTriggerType {
-        case .keyboard:
-            guard let recordedKeyCode else { return "未录制" }
-            return CGKeyCodeNames.shortcutLabel(for: recordedKeyCode, modifiers: recordedModifiers)
-        case .mouseRight: return "鼠标右键"
-        case .mouseOther:
-            if let num = recordedMouseButtonNumber { return "鼠标按键 \(num)" }
-            return "鼠标多功能键"
-        }
-    }
-
-    var capTrigger: KeyCapView.Trigger {
-        switch recordedTriggerType {
-        case .keyboard:
-            guard let recordedKeyCode else { return .none }
-            return .keyboard(keyCode: recordedKeyCode, modifiers: recordedModifiers)
-        case .mouseRight: return .mouseRight
-        case .mouseOther: return .mouseOther(buttonNumber: recordedMouseButtonNumber)
-        }
-    }
-
-    var hasTrigger: Bool {
-        switch recordedTriggerType {
-        case .keyboard: return recordedKeyCode != nil
-        case .mouseRight: return true
-        case .mouseOther: return recordedMouseButtonNumber != nil
-        }
-    }
 
     var canSave: Bool {
         let allStepsValid = !steps.isEmpty && steps.allSatisfy { $0.toMacroStep() != nil }
@@ -349,39 +315,6 @@ final class MacroEditorViewModel: ObservableObject {
     }
 
     // MARK: - 录制
-
-    func startTriggerRecording() {
-        stopTriggerRecording()
-        isRecordingTrigger = true
-        setMessage("按下键盘按键，或点击鼠标右键、多功能键。")
-
-        _ = triggerRecorder.start { [weak self] trigger in
-            guard let self else { return }
-            switch trigger {
-            case .keyboard(let keyCode, let modifiers):
-                self.recordedTriggerType = .keyboard
-                self.recordedKeyCode = keyCode
-                self.recordedModifiers = modifiers
-                self.recordedMouseButtonNumber = nil
-                if self.label.isEmpty { self.label = "宏 \(CGKeyCodeNames.name(for: keyCode))" }
-            case .mouseRight:
-                self.recordedTriggerType = .mouseRight
-                self.recordedKeyCode = 0
-                self.recordedModifiers = 0
-                self.recordedMouseButtonNumber = nil
-                if self.label.isEmpty { self.label = "宏 鼠标右键" }
-            case .mouseOther(let buttonNumber):
-                self.recordedTriggerType = .mouseOther
-                self.recordedMouseButtonNumber = buttonNumber
-                self.recordedKeyCode = 0
-                self.recordedModifiers = 0
-                if self.label.isEmpty { self.label = "宏 鼠标按键 \(buttonNumber)" }
-            }
-            self.isRecordingTrigger = false
-            self.setMessage(nil)
-            self.flashCaptured()
-        }
-    }
 
     func startPointRecording(forStepId stepId: UUID) {
         stopPointRecording()
@@ -605,25 +538,9 @@ final class MacroEditorViewModel: ObservableObject {
         stopPointRecording()
     }
 
-    private func flashCaptured() {
-        justCaptured = true
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 900_000_000)
-            self?.justCaptured = false
-        }
-    }
-
-    private func stopTriggerRecording() {
-        triggerRecorder.stop()
-    }
-
     private func stopPointRecording() {
         pointRecorder.stop()
         recordingStepId = nil
-    }
-
-    private func setMessage(_ new: String?) {
-        if message != new { message = new }
     }
 
     private func startAutosave() {

@@ -49,7 +49,7 @@ final class ConfigurationWindowController {
                 // observer 已绑定到特定 window（object: window），每次回调一定是这个窗口，
                 // 不必从 note 解包——note: Notification 不 Sendable，跨 actor 传会被 strict
                 // concurrency 拦下。直接通过 self.window 检查 isReleasedWhenClosed。
-                MainActor.assumeIsolated {
+                assumingMainActor {
                     guard self?.window?.isReleasedWhenClosed == true else { return }
                     self?.releaseWindow()
                 }

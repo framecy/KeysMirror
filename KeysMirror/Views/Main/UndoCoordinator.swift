@@ -101,7 +101,7 @@ final class UndoCoordinator: ObservableObject {
     ) {
         manager.beginUndoGrouping()
         manager.registerUndo(withTarget: owner) { [owner] _ in
-            MainActor.assumeIsolated {
+            assumingMainActor {
                 backward()
                 // 这一步跑在 undo 过程中，登记的是「重做」，同样需要自己的 group
                 UndoCoordinator.shared.registerPair(name: name, owner: owner, forward: backward, backward: forward)
@@ -126,9 +126,10 @@ final class UndoCoordinator: ObservableObject {
             // NSEvent 不是 Sendable，但监听回调只在主线程触发；
             // 与 PointRecorder / TriggerRecorder 里对 CGEvent 的处理同一思路。
             let boxed = UnsafeEventBox(event: event)
-            // assumeIsolated 的返回值要求 Sendable，NSEvent 不是——
-            // 所以只把「是否已消费」这个 Bool 传出来，事件本身留在闭包里。
-            let consumed = MainActor.assumeIsolated {
+            // 只把「是否已消费」这个 Bool 传出来，事件本身留在闭包里。
+            // （原因是当年 assumeIsolated 的返回值要求 Sendable；现在换成了
+            //  assumingMainActor，没这个约束了，但保持现状——事件不外泄本身就是好的。）
+            let consumed = assumingMainActor {
                 UndoCoordinator.shared.handle(event: boxed.event)
             }
             return consumed ? nil : event

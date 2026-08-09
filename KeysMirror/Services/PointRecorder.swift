@@ -82,7 +82,7 @@ final class PointRecorder {
     private nonisolated func handleCallback(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let optionalEvent: CGEvent? = (type == .tapDisabledByTimeout || type == .tapDisabledByUserInput) ? nil : event
         let unsafeEvent = UnsafeOptionalEvent(value: optionalEvent)
-        return MainActor.assumeIsolated {
+        return assumingMainActor {
             process(type: type, event: unsafeEvent.value)
         }
     }

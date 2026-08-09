@@ -9,6 +9,14 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.3"
+    # 关掉「动态 actor 隔离检查」。
+    # Swift 6 语言模式会在**每个** SwiftUI ViewBuilder 闭包入口插一段
+    # `swift_task_isCurrentExecutor(MainActor.shared.unownedExecutor)`（本工程 436 处）。
+    # AppKit runloop 里没有 Swift task，这个检查会走 SerialExecutorRef::isMainExecutor()
+    # → swift_getObjectType(identity)；macOS 26/27 上 identity 偶发是野指针，
+    # objc_opt_class 读它就是 EXC_BAD_ACCESS（见 1.6.7 的 MacroStepCard.body 闪退）。
+    # 这个检查只是运行期诊断，静态的 Swift 6 并发检查一个都不少。
+    OTHER_SWIFT_FLAGS: "$(inherited) -Xfrontend -disable-dynamic-actor-isolation"
     MACOSX_DEPLOYMENT_TARGET: "13.0"
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual

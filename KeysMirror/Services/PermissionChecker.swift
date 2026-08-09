@@ -8,6 +8,14 @@ final class PermissionChecker: ObservableObject {
     @Published private(set) var isAccessibilityGranted = false
     private var pollingTimer: Timer?
 
+    /// 轮询期间检测到权限刚被授予时回调一次（随后停止轮询）。
+    ///
+    /// 原先这里直接 `KeyInterceptor.shared.start()` + `StatusBarController.shared.update(...)`——
+    /// 一个「查权限」的服务顺手决定了拦截器起停和菜单栏长相，而且那段逻辑和 AppDelegate 里
+    /// 启动 / 唤醒 / 手动 toggle 三处是重复的。改成把「权限到手了」这件事报上去，
+    /// 由 AppDelegate 统一决定后续动作。
+    var onAccessibilityGranted: (() -> Void)?
+
     private init() {}
 
     func refreshStatus() {
@@ -38,11 +46,7 @@ final class PermissionChecker: ObservableObject {
                 if self.isAccessibilityGranted {
                     self.pollingTimer?.invalidate()
                     self.pollingTimer = nil
-                    _ = KeyInterceptor.shared.start()
-                    StatusBarController.shared.update(
-                        permissionGranted: self.isAccessibilityGranted,
-                        interceptorEnabled: KeyInterceptor.shared.isEnabled
-                    )
+                    self.onAccessibilityGranted?()
                 }
             }
         }

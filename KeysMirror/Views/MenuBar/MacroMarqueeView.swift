@@ -141,7 +141,7 @@ final class MacroMarqueeView: NSView {
     private func start() {
         guard timer == nil else { return }
         let t = Timer(timeInterval: Self.frameInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
+            assumingMainActor {
                 guard let self else { return }
                 self.offset = Self.advance(
                     offset: self.offset,

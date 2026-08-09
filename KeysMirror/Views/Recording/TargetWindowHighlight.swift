@@ -23,7 +23,7 @@ final class TargetWindowHighlight {
                 object: nil,
                 queue: .main
             ) { _ in
-                MainActor.assumeIsolated { TargetWindowHighlight.shared.applyCurrentFrame() }
+                assumingMainActor { TargetWindowHighlight.shared.applyCurrentFrame() }
             }
         }
     }

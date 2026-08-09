@@ -126,7 +126,7 @@ final class ActiveAppAXObserver {
         guard let refcon else { return }
         let me = Unmanaged<ActiveAppAXObserver>.fromOpaque(refcon).takeUnretainedValue()
         let notif = notification as String
-        MainActor.assumeIsolated {
+        assumingMainActor {
             guard let pid = me.currentPID else { return }
             // kAX*Notification 在 Swift 已桥接为 String，无需再 `as String`
             switch notif {

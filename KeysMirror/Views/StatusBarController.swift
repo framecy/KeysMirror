@@ -33,6 +33,17 @@ final class StatusBarController {
             name: .macroRunStateDidChange,
             object: nil
         )
+        // 输入活动闪烁：由 KeyInterceptor / MacroRunner 发通知，Services 层不再反向持有本控制器
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleInputActivity),
+            name: .inputActivityDidFire,
+            object: nil
+        )
+    }
+
+    @objc private func handleInputActivity() {
+        flashActivity()
     }
 
     func configure(
@@ -296,7 +307,7 @@ final class StatusBarController {
         statusItem.button?.contentTintColor = nil
     }
 
-    func flashActivity() {
+    private func flashActivity() {
         // 宏运行时图标已是红色，跳过绿色 flash 避免来回闪烁
         if macroRunning { return }
         guard let button = statusItem.button else { return }

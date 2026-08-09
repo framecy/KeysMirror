@@ -190,7 +190,10 @@ struct MacroInspector: View {
                     ForEach(Array(viewModel.steps.enumerated()), id: \.element.id) { index, step in
                         MacroStepCard(
                             index: index,
-                            step: $viewModel.steps[index],
+                            // 按 id 取绑定，不用 `$viewModel.steps[index]`。
+                            // 删除 / 撤销带动画时，SwiftUI 会在过渡期间再求值一次已经移除的行，
+                            // 那时下标已经越界，数组下标直接 trap。按 id 找不到就退回快照值。
+                            step: stepBinding(for: step),
                             profileMappings: viewModel.profile.mappings,
                             isRecordingThisStep: viewModel.recordingStepId == step.id,
                             canMoveUp: index > 0,
@@ -205,6 +208,18 @@ struct MacroInspector: View {
                 }
             }
         }
+    }
+
+    /// 以 id 为锚的步骤绑定：写回时重新按 id 定位，行已经不在就丢弃这次写入。
+    private func stepBinding(for snapshot: EditableStep) -> Binding<EditableStep> {
+        let vm = viewModel
+        return Binding(
+            get: { vm.steps.first { $0.id == snapshot.id } ?? snapshot },
+            set: { newValue in
+                guard let idx = vm.steps.firstIndex(where: { $0.id == snapshot.id }) else { return }
+                vm.steps[idx] = newValue
+            }
+        )
     }
 
     /// 常驻底栏：「拦截原始按键」是每次调宏都要确认的开关，

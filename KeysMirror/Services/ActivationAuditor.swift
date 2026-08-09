@@ -27,7 +27,7 @@ final class ActivationAuditor {
             queue: .main
         ) { note in
             let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            MainActor.assumeIsolated {
+            assumingMainActor {
                 let runner = MacroRunner.shared
                 guard runner.isAnyRunning else { return }
                 let name = app?.localizedName ?? "?"

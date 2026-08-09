@@ -14,14 +14,34 @@ final class WindowLocator {
     }
     private var observedFocus: FocusState?
 
+    /// frame 是从哪条路径拿到的。决定缓存能存多久（见 `cacheTTL(for:)`）。
+    enum FrameSource {
+        /// 目标 app 的 Accessibility 正常应答。窗口移动 / 缩放会由 AXObserver 推送失效缓存。
+        case accessibility
+        /// AX 不可用，退回 Window Server 的窗口列表。没有任何推送可依赖。
+        case windowList
+    }
+
+    struct ResolvedFrame {
+        let frame: CGRect
+        let source: FrameSource
+    }
+
     /// 焦点窗口 frame 缓存。命中后零 AX IPC；窗口移动 / 缩放 / 切前台 app 时由
     /// `.focusedWindowFrameChanged` 广播失效，同步性靠 AXObserver 推送保证。
     private struct FrameCacheEntry {
         let bundleId: String
         let frame: CGRect
+        let source: FrameSource
         let timestamp: TimeInterval
     }
     private var cachedFrame: FrameCacheEntry?
+
+    /// 已经为哪些 app 记过「已降级到 CGWindowList」日志，避免每次按键刷屏。
+    private var windowListFallbackLogged: Set<String> = []
+
+    /// 小于这个边长的窗口不当主窗口。输入法候选框、提示气泡都在这个量级以下。
+    private static let minimumUsableWindowSide: CGFloat = 120
 
     /// 兜底 TTL：部分 app（iOS-on-Mac / 自绘 Metal 游戏）AX 通知注册成功但实际不推送，
     /// 缓存可能永久卡死——focus 卡在 isTextInput=true 让所有 keyDown 直通；frame 卡在
@@ -32,8 +52,10 @@ final class WindowLocator {
     /// 期间鼠标光标无法响应，用户体验为「鼠标失灵」。
     /// - focusCacheTTL：15s，覆盖 silent observer 的 isTextInput 卡住场景，频率可接受
     /// - frameCacheTTL：60s，游戏窗口几乎不移动，observer 推送会提前失效缓存
+    /// - windowListFrameCacheTTL：1s，这条路径没有 observer 可依赖，但也不进目标进程，刷得起
     private static let focusCacheTTL: TimeInterval = 15.0
     private static let frameCacheTTL: TimeInterval = 60.0
+    private static let windowListFrameCacheTTL: TimeInterval = 1.0
 
     /// 测试接缝：注入 frame 查询。生产路径走真正的 AX 调用；单测可注入桩。
     var frameProviderForTesting: ((String) -> CGRect?)?
@@ -57,15 +79,35 @@ final class WindowLocator {
         let now = Date.timeIntervalSinceReferenceDate
         if let cache = cachedFrame,
            cache.bundleId == bundleIdentifier,
-           now - cache.timestamp < Self.frameCacheTTL {
+           now - cache.timestamp < Self.cacheTTL(for: cache.source) {
             return cache.frame
         }
-        let query = frameProviderForTesting ?? { [weak self] bid in self?.queryFocusedWindowFrame(for: bid) }
-        guard let frame = query(bundleIdentifier) else {
+        guard let resolved = resolveFrame(for: bundleIdentifier) else {
             return nil
         }
-        cachedFrame = FrameCacheEntry(bundleId: bundleIdentifier, frame: frame, timestamp: now)
-        return frame
+        cachedFrame = FrameCacheEntry(
+            bundleId: bundleIdentifier,
+            frame: resolved.frame,
+            source: resolved.source,
+            timestamp: now
+        )
+        return resolved.frame
+    }
+
+    private func resolveFrame(for bundleIdentifier: String) -> ResolvedFrame? {
+        if let stub = frameProviderForTesting {
+            return stub(bundleIdentifier).map { ResolvedFrame(frame: $0, source: .accessibility) }
+        }
+        return queryFocusedWindowFrame(for: bundleIdentifier)
+    }
+
+    /// AX 路径有 AXObserver 推送兜着，可以缓存很久；CGWindowList 路径没有任何失效信号，
+    /// 只能靠短 TTL 保鲜。好在后者不进目标进程（Window Server 直接应答），刷勤一点也不心疼。
+    private static func cacheTTL(for source: FrameSource) -> TimeInterval {
+        switch source {
+        case .accessibility: return frameCacheTTL
+        case .windowList: return windowListFrameCacheTTL
+        }
     }
 
     /// 测试用：手动清空 frame 缓存
@@ -73,28 +115,94 @@ final class WindowLocator {
         cachedFrame = nil
     }
 
-    private func queryFocusedWindowFrame(for bundleIdentifier: String) -> CGRect? {
+    /// 查询目标 app 的焦点窗口 frame。
+    ///
+    /// 三级降级，任何一级拿到**有效** frame 就返回：
+    ///   1. AX `kAXFocusedWindowAttribute` —— 正常 app 走这条；
+    ///   2. AX `kAXWindowsAttribute` 里第一个能读出几何的窗口 —— app 不报告焦点窗口时兜底；
+    ///   3. Window Server 窗口列表（`CGWindowListCopyWindowInfo`）—— AX 整条链都不应答时兜底。
+    ///
+    /// 第 3 级是给「AX 形同虚设」的 app 准备的：部分 iOS-on-Mac / 自绘游戏要么整个 AX 树不应答，
+    /// 要么给得出 AXFocusedWindow 却读不到它的 AXPosition/AXSize。以前这里直接返回 nil，
+    /// KeyInterceptor 只能记一行「匹配成功但无法读取窗口位置」然后放行原始按键——
+    /// 用户体感就是这个游戏里快捷键完全失灵（其它 app 一切正常）。
+    /// CGWindowList 由 Window Server 直接应答、不进目标进程，不受目标 app 的 AX 实现好坏影响。
+    ///
+    /// 注意第 1 级失败**不能**直接 return nil：拿到了 AXFocusedWindow 但读不出几何属性时必须继续往下走，
+    /// 否则第 2、3 级永远没机会执行——这正是旧实现的漏洞。
+    private func queryFocusedWindowFrame(for bundleIdentifier: String) -> ResolvedFrame? {
         guard let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleIdentifier }) else {
             return nil
         }
-
-        let applicationElement = AXUtilities.makeAppElement(pid: app.processIdentifier)
+        let pid = app.processIdentifier
+        let applicationElement = AXUtilities.makeAppElement(pid: pid)
 
         var focusedWindowValue: CFTypeRef?
         let focusedResult = AXUIElementCopyAttributeValue(applicationElement, kAXFocusedWindowAttribute as CFString, &focusedWindowValue)
-        if focusedResult == .success, let focusedWindowValue {
-            return frame(for: focusedWindowValue)
+        if focusedResult == .success,
+           let focusedWindowValue,
+           let frame = frame(for: focusedWindowValue) {
+            return ResolvedFrame(frame: frame, source: .accessibility)
         }
 
         var windowsValue: CFTypeRef?
         let windowsResult = AXUIElementCopyAttributeValue(applicationElement, kAXWindowsAttribute as CFString, &windowsValue)
         if windowsResult == .success,
            let windows = windowsValue as? [AXUIElement],
-           let firstWindow = windows.first {
-            return frame(for: firstWindow)
+           let frame = windows.lazy.compactMap({ self.frame(for: $0) }).first {
+            return ResolvedFrame(frame: frame, source: .accessibility)
+        }
+
+        if let frame = Self.queryWindowListFrame(ownedBy: pid) {
+            noteWindowListFallback(for: bundleIdentifier)
+            return ResolvedFrame(frame: frame, source: .windowList)
         }
 
         return nil
+    }
+
+    /// 用 Window Server 的窗口列表取 pid 的主窗口 frame。
+    ///
+    /// `kCGWindowBounds` 与 AX 用的是同一套坐标系（主屏左上角为原点、Y 向下），可以直接当 AX frame 用——
+    /// `occludingApp(at:ownedBy:)` 早就在混用这两者做命中判断了。
+    /// 只查 `.optionOnScreenOnly`，所以最小化 / 隐藏的窗口自然选不中，与 AX 路径拒绝最小化窗口的行为一致。
+    private static func queryWindowListFrame(ownedBy pid: pid_t) -> CGRect? {
+        guard let infos = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else {
+            return nil
+        }
+        return mainWindowFrame(fromWindowList: infos, ownedBy: pid)
+    }
+
+    /// 从窗口列表快照里挑出 pid 的主窗口。抽成纯函数是为了能直接喂假数据做单测。
+    ///
+    /// 取「面积最大」而不是「最靠前」：游戏进程常常还挂着输入法候选框、提示气泡这类 layer 0 的小窗口，
+    /// 它们可能排在主窗口前面。面积最大的那个才是要点击的游戏画面。
+    static func mainWindowFrame(fromWindowList infos: [[String: Any]], ownedBy pid: pid_t) -> CGRect? {
+        var best: CGRect?
+        for info in infos {
+            guard (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid else { continue }
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { continue }
+            guard let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict) else { continue }
+            guard bounds.width >= minimumUsableWindowSide,
+                  bounds.height >= minimumUsableWindowSide else { continue }
+            if let current = best, current.width * current.height >= bounds.width * bounds.height { continue }
+            best = bounds
+        }
+        return best
+    }
+
+    /// 第一次对某个 app 用上 CGWindowList 兜底时记一行日志。
+    /// 每次按键都记会把日志刷爆，完全不记的话用户排查「这个游戏怎么和别的不一样」时又没线索。
+    private func noteWindowListFallback(for bundleIdentifier: String) {
+        guard windowListFallbackLogged.insert(bundleIdentifier).inserted else { return }
+        AppLogger.shared.log(
+            "[\(bundleIdentifier)] AX 读不到窗口位置，改用 Window Server 窗口列表兜底（该 app 的 AX 实现不完整，属预期降级）",
+            type: "WARN"
+        )
     }
 
     func relativePoint(from screenPoint: CGPoint, inWindowFrame windowFrame: CGRect) -> CGPoint? {

@@ -6,21 +6,12 @@ import SwiftUI
 /// 任何字段变化后 300ms 内自动落盘；尚未配置完成的草稿不写入，
 /// 等触发器 / 位置 / 名称齐备后第一次自动创建（见 docs/UI-Redesign.md 6.3）。
 @MainActor
-final class MappingEditorViewModel: ObservableObject {
-    @Published var label: String
-    @Published var recordedKeyCode: UInt16?
-    @Published var recordedModifiers: UInt64
-    @Published var recordedTriggerType: TriggerType
-    @Published var recordedMouseButtonNumber: Int?
+final class MappingEditorViewModel: TriggerEditorViewModel {
     @Published var recordedPoint: CGPoint?
     @Published var recordedReferenceSize: CGSize?
     @Published var blockInput: Bool
-    @Published var isRecordingTrigger = false
     @Published var isRecordingPoint = false
-    @Published var justCaptured = false
-    @Published var message: String?
 
-    let profile: AppProfile
     /// 已持久化的映射；草稿阶段为 nil，第一次成功保存后写入。
     private(set) var existingMapping: KeyMapping?
 
@@ -33,19 +24,12 @@ final class MappingEditorViewModel: ObservableObject {
     private var undoCancellable: AnyCancellable?
     private var isApplyingUndo = false
 
-    private let appResolver = AppResolver.shared
-    private let pointRecorder = PointRecorder.shared
-    private let triggerRecorder = TriggerRecorder.shared
+    /// 触发键录制横跨 will/did 两个覆写点，基线暂存在这里
+    private var pendingTriggerUndoBase: EditableMapping?
 
     init(profile: AppProfile, existingMapping: KeyMapping?, autosave: Bool = false) {
-        self.profile = profile
         self.existingMapping = existingMapping
         self.autosave = autosave
-        self.label = existingMapping?.label ?? ""
-        self.recordedKeyCode = existingMapping?.keyCode
-        self.recordedModifiers = existingMapping?.modifiers ?? 0
-        self.recordedTriggerType = existingMapping?.triggerType ?? .keyboard
-        self.recordedMouseButtonNumber = existingMapping?.mouseButtonNumber
         self.blockInput = existingMapping?.blockInput ?? true
         if let existingMapping {
             self.recordedPoint = CGPoint(x: existingMapping.relativeX, y: existingMapping.relativeY)
@@ -53,10 +37,34 @@ final class MappingEditorViewModel: ObservableObject {
                 self.recordedReferenceSize = CGSize(width: refW, height: refH)
             }
         }
+
+        super.init(profile: profile)
+
+        // 基类字段的初值必须在 super.init 之后写；也必须在下面接 cancellable 之前写完，
+        // 否则初始化本身会被当成一次用户编辑（脏标记 / 撤销基线都会跑偏）。
+        self.label = existingMapping?.label ?? ""
+        self.recordedKeyCode = existingMapping?.keyCode
+        self.recordedModifiers = existingMapping?.modifiers ?? 0
+        self.recordedTriggerType = existingMapping?.triggerType ?? .keyboard
+        self.recordedMouseButtonNumber = existingMapping?.mouseButtonNumber
+
         if autosave {
             startAutosave()
             startUndoTracking()
         }
+    }
+
+    // MARK: - 基类覆写点
+
+    override func triggerCaptureWillApply() {
+        pendingTriggerUndoBase = snapshot
+    }
+
+    override func triggerCaptureDidApply() {
+        if let before = pendingTriggerUndoBase {
+            registerImmediate(name: "录制触发", from: before)
+        }
+        pendingTriggerUndoBase = nil
     }
 
     // MARK: - 撤销
@@ -145,40 +153,9 @@ final class MappingEditorViewModel: ObservableObject {
 
     var isDraft: Bool { existingMapping == nil }
 
-    var shortcutText: String {
-        switch recordedTriggerType {
-        case .keyboard:
-            guard let recordedKeyCode else { return "未录制" }
-            return CGKeyCodeNames.shortcutLabel(for: recordedKeyCode, modifiers: recordedModifiers)
-        case .mouseRight:
-            return "鼠标右键"
-        case .mouseOther:
-            if let num = recordedMouseButtonNumber { return "鼠标按键 \(num)" }
-            return "鼠标多功能键"
-        }
-    }
-
-    var capTrigger: KeyCapView.Trigger {
-        switch recordedTriggerType {
-        case .keyboard:
-            guard let recordedKeyCode else { return .none }
-            return .keyboard(keyCode: recordedKeyCode, modifiers: recordedModifiers)
-        case .mouseRight: return .mouseRight
-        case .mouseOther: return .mouseOther(buttonNumber: recordedMouseButtonNumber)
-        }
-    }
-
     var pointText: String {
         guard let recordedPoint else { return "未录制" }
         return "x: \(Int(recordedPoint.x)), y: \(Int(recordedPoint.y))"
-    }
-
-    var hasTrigger: Bool {
-        switch recordedTriggerType {
-        case .keyboard: return recordedKeyCode != nil
-        case .mouseRight: return true
-        case .mouseOther: return recordedMouseButtonNumber != nil
-        }
     }
 
     var canSave: Bool {
@@ -197,41 +174,6 @@ final class MappingEditorViewModel: ObservableObject {
     }
 
     // MARK: - 录制
-
-    func startTriggerRecording() {
-        stopTriggerRecording()
-        isRecordingTrigger = true
-        setMessage("按下键盘按键，或点击鼠标右键、多功能键。")
-
-        _ = triggerRecorder.start { [weak self] trigger in
-            guard let self else { return }
-            let before = self.snapshot
-            switch trigger {
-            case .keyboard(let keyCode, let modifiers):
-                self.recordedTriggerType = .keyboard
-                self.recordedKeyCode = keyCode
-                self.recordedModifiers = modifiers
-                self.recordedMouseButtonNumber = nil
-                if self.label.isEmpty { self.label = CGKeyCodeNames.name(for: keyCode) }
-            case .mouseRight:
-                self.recordedTriggerType = .mouseRight
-                self.recordedKeyCode = 0
-                self.recordedModifiers = 0
-                self.recordedMouseButtonNumber = nil
-                if self.label.isEmpty { self.label = "鼠标右键" }
-            case .mouseOther(let buttonNumber):
-                self.recordedTriggerType = .mouseOther
-                self.recordedMouseButtonNumber = buttonNumber
-                self.recordedKeyCode = 0
-                self.recordedModifiers = 0
-                if self.label.isEmpty { self.label = "鼠标按键 \(buttonNumber)" }
-            }
-            self.isRecordingTrigger = false
-            self.setMessage(nil)
-            self.flashCaptured()
-            self.registerImmediate(name: "录制触发", from: before)
-        }
-    }
 
     func startPointRecording() {
         stopPointRecording()
@@ -348,26 +290,9 @@ final class MappingEditorViewModel: ObservableObject {
         recordedPoint = point
     }
 
-    private func flashCaptured() {
-        justCaptured = true
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 900_000_000)
-            self?.justCaptured = false
-        }
-    }
-
-    private func stopTriggerRecording() {
-        triggerRecorder.stop()
-    }
-
     private func stopPointRecording() {
         pointRecorder.stop()
         isRecordingPoint = false
-    }
-
-    /// 只在值真的变化时赋值：避免 autosave 的 objectWillChange 自激循环。
-    private func setMessage(_ new: String?) {
-        if message != new { message = new }
     }
 
     private func startAutosave() {

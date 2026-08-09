@@ -113,7 +113,7 @@ final class MacroEditorWindowController {
             object: window,
             queue: .main
         ) { _ in
-            MainActor.assumeIsolated { MacroEditorWindowController.shared.forget(key) }
+            assumingMainActor { MacroEditorWindowController.shared.forget(key) }
         }
     }
 
