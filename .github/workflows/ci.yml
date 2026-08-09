@@ -12,6 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 源码门禁放在最前面：不需要构建，几秒内就能挡下写回 MainActor.assumeIsolated 的改动。
+      - name: Crash guard (source)
+        run: ./scripts/verify_crash_guard.sh
+
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
@@ -28,9 +32,17 @@ jobs:
             -scheme KeysMirror \
             -destination 'platform=macOS' \
             -configuration Debug \
+            -derivedDataPath build \
             test 2>&1 | xcpretty || (xcodebuild \
               -project KeysMirror.xcodeproj \
               -scheme KeysMirror \
               -destination 'platform=macOS' \
               -configuration Debug \
+              -derivedDataPath build \
               test; exit 1)
+
+      # 二进制门禁：project.yml 里那个未公开的 -Xfrontend flag 一旦被新工具链静默忽略，
+      # 编译照样成功、测试照样通过，只有这一步能发现——而漏掉它的代价是
+      # macOS 26/27 用户一打开就闪退。
+      - name: Crash guard (binary)
+        run: ./scripts/verify_crash_guard.sh build/Build/Products/Debug/KeysMirror.app/Contents/MacOS/KeysMirror

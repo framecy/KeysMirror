@@ -14,6 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Crash guard (source)
+        run: ./scripts/verify_crash_guard.sh
+
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
@@ -35,7 +38,75 @@ jobs:
             ENABLE_HARDENED_RUNTIME=NO \
             build
 
-      - name: Sign (ad-hoc)
+      # 发版前的最后一道闸：Release 配置的优化等级与 Debug 不同，
+      # 隔离检查的插入情况也可能不同，必须对真正要发出去的这个二进制再验一次。
+      - name: Crash guard (binary)
+        run: ./scripts/verify_crash_guard.sh build/Build/Products/Release/KeysMirror.app/Contents/MacOS/KeysMirror
+
+      # ── 签名与公证 ──────────────────────────────────────────────────────────
+      #
+      # 配好 Developer ID 相关 secrets 时走「正式签名 + 公证」，用户下载双击直接能开；
+      # 没配时退回 ad-hoc 签名（用户首次打开需要右键 → 打开，并在系统设置里放行一次）。
+      # 两条路都会产出可用的 zip，不会因为缺 secrets 就发不出版本。
+      #
+      # 需要的 secrets（缺任意一个即退回 ad-hoc）：
+      #   MACOS_CERTIFICATE      Developer ID Application 证书导出的 .p12，base64 编码
+      #   MACOS_CERTIFICATE_PWD  导出该 .p12 时设置的密码
+      #   MACOS_SIGNING_IDENTITY 形如 "Developer ID Application: 你的名字 (TEAMID)"
+      #   APPLE_ID               Apple 开发者账号邮箱
+      #   APPLE_APP_PASSWORD     该账号的 App 专用密码（不是登录密码）
+      #   APPLE_TEAM_ID          10 位 Team ID
+      # 具体怎么拿这些值，见 docs/RELEASE.md。
+      - name: Detect signing capability
+        id: signing
+        env:
+          CERT: ${{ secrets.MACOS_CERTIFICATE }}
+          IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+        run: |
+          if [ -n "$CERT" ] && [ -n "$IDENTITY" ] && [ -n "$APPLE_ID" ]; then
+            echo "mode=developer-id" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=adhoc" >> "$GITHUB_OUTPUT"
+            echo "::warning::未配置 Developer ID secrets，本次发布使用 ad-hoc 签名——用户首次打开需要右键「打开」。配置方法见 docs/RELEASE.md"
+          fi
+
+      - name: Import signing certificate
+        if: steps.signing.outputs.mode == 'developer-id'
+        env:
+          CERT: ${{ secrets.MACOS_CERTIFICATE }}
+          CERT_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+        run: |
+          KEYCHAIN_PWD=$(uuidgen)
+          echo "$CERT" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$KEYCHAIN_PWD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PWD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$CERT_PWD" \
+            -T /usr/bin/codesign -T /usr/bin/productsign
+          # 没这一行的话 codesign 每次都会弹出「允许访问钥匙串」的图形提示，CI 上直接卡死
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" build.keychain
+          rm -f /tmp/cert.p12
+
+      - name: Sign (Developer ID + hardened runtime)
+        if: steps.signing.outputs.mode == 'developer-id'
+        env:
+          IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          APP="build/Build/Products/Release/KeysMirror.app"
+          /usr/bin/xattr -cr "$APP"
+          # --options runtime 打开 Hardened Runtime，公证的硬性前提。
+          # KeysMirror 作为「辅助功能客户端」使用 AX / CGEventTap 不需要额外 entitlement，
+          # 但签完必须真机验证一次映射还能用——见 docs/RELEASE.md 的验证清单。
+          /usr/bin/codesign --force --deep --options runtime --timestamp \
+            --entitlements KeysMirror/KeysMirror.entitlements \
+            --generate-entitlement-der \
+            --sign "$IDENTITY" "$APP"
+          /usr/bin/codesign --verify --strict --verbose=2 "$APP"
+
+      - name: Sign (ad-hoc fallback)
+        if: steps.signing.outputs.mode == 'adhoc'
         run: |
           APP="build/Build/Products/Release/KeysMirror.app"
           /usr/bin/xattr -cr "$APP"
@@ -50,6 +121,30 @@ jobs:
           /usr/bin/ditto -c -k --keepParent "$APP" "$ZIP"
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      # 公证：把 zip 提交给 Apple 审核，通过后把票据钉回 .app。
+      # 钉票据必须对 .app 做（zip 不能 staple），所以钉完要重新打包。
+      # 钉上票据后用户即使离线也能直接双击打开，不会被 Gatekeeper 拦。
+      - name: Notarize and staple
+        if: steps.signing.outputs.mode == 'developer-id'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          APP="build/Build/Products/Release/KeysMirror.app"
+          ZIP="${{ steps.pkg.outputs.zip }}"
+          xcrun notarytool submit "$ZIP" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 30m
+          xcrun stapler staple "$APP"
+          # 重新打包，让发出去的 zip 里带上票据
+          rm -f "$ZIP"
+          /usr/bin/ditto -c -k --keepParent "$APP" "$ZIP"
+          # 最终确认：这一步过了才等于「用户双击能直接打开」
+          spctl --assess --type execute --verbose=4 "$APP"
 
       - name: Create or update GitHub Release
         env:
