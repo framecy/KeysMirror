@@ -40,8 +40,18 @@ jobs:
 
       # 发版前的最后一道闸：Release 配置的优化等级与 Debug 不同，
       # 隔离检查的插入情况也可能不同，必须对真正要发出去的这个二进制再验一次。
+      # 与 CI 同款的 find 定位：这里目前路径是对的，但两条流程用同一套写法，
+      # 免得以后 Xcode 换代时只修了一边。
       - name: Crash guard (binary)
-        run: ./scripts/verify_crash_guard.sh build/Build/Products/Release/KeysMirror.app/Contents/MacOS/KeysMirror
+        run: |
+          BIN=$(find build -type f -path '*/KeysMirror.app/Contents/MacOS/KeysMirror' | head -1)
+          if [ -z "$BIN" ]; then
+            echo "✗ 没找到 KeysMirror 可执行文件，门禁无法执行。build/ 下的 .app 有："
+            find build -name '*.app' -maxdepth 8 -print
+            exit 1
+          fi
+          echo "产物：$BIN"
+          ./scripts/verify_crash_guard.sh "$BIN"
 
       # ── 签名与公证 ──────────────────────────────────────────────────────────
       #

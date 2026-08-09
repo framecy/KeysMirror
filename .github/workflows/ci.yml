@@ -25,15 +25,24 @@ jobs:
       - name: Generate project
         run: xcodegen generate
 
+      # ⚠️ set -o pipefail 不能删。
+      #
+      # 没有它，`xcodebuild ... | xcpretty` 的退出码取自 xcpretty——而 xcpretty
+      # 无论构建成功还是失败都返回 0。后果实测过：测试目标整个编译不过（主 actor 隔离
+      # 错误），这一步照样是绿的，CI 长期在「没跑任何测试」的状态下报平安，
+      # 直到 v1.7.1 加的二进制门禁找不到产物才暴露出来。
+      #
+      # 失败时再跑一次不加管道的，好在日志里看到 xcodebuild 的原始输出。
       - name: Build & Test
         run: |
+          set -o pipefail
           xcodebuild \
             -project KeysMirror.xcodeproj \
             -scheme KeysMirror \
             -destination 'platform=macOS' \
             -configuration Debug \
             -derivedDataPath build \
-            test 2>&1 | xcpretty || (xcodebuild \
+            test 2>&1 | xcpretty || (echo "=== 上面是 xcpretty 过滤后的输出，以下为原始输出 ==="; xcodebuild \
               -project KeysMirror.xcodeproj \
               -scheme KeysMirror \
               -destination 'platform=macOS' \
@@ -44,5 +53,18 @@ jobs:
       # 二进制门禁：project.yml 里那个未公开的 -Xfrontend flag 一旦被新工具链静默忽略，
       # 编译照样成功、测试照样通过，只有这一步能发现——而漏掉它的代价是
       # macOS 26/27 用户一打开就闪退。
+      #
+      # 产物路径用 find 搜而不是写死：test 这个 action 把 .app 放在哪，
+      # 随 Xcode 版本和平台变化（写死 build/Build/Products/Debug/ 在 macos-15 上就扑空了）。
+      # 搜不到时必须失败并打印实际产物，绝不能因为「没找到文件」而静默放行——
+      # 那样这道门禁就等于不存在。
       - name: Crash guard (binary)
-        run: ./scripts/verify_crash_guard.sh build/Build/Products/Debug/KeysMirror.app/Contents/MacOS/KeysMirror
+        run: |
+          BIN=$(find build -type f -path '*/KeysMirror.app/Contents/MacOS/KeysMirror' | head -1)
+          if [ -z "$BIN" ]; then
+            echo "✗ 没找到 KeysMirror 可执行文件，门禁无法执行。build/ 下的 .app 有："
+            find build -name '*.app' -maxdepth 8 -print
+            exit 1
+          fi
+          echo "产物：$BIN"
+          ./scripts/verify_crash_guard.sh "$BIN"

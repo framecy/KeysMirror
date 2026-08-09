@@ -26,12 +26,21 @@ final class MacroEditorWindowControllerTests: XCTestCase {
         )
     }
 
-    override func tearDown() {
+    /// 必须用 `async throws` 这个重载，不能用同步的 `override func tearDown()`。
+    ///
+    /// 同步版本重写的是 XCTestCase 上 nonisolated 的方法，即使类标了 `@MainActor`，
+    /// 方法体也会落在 nonisolated 上下文里——碰 `NSApp` 就是主 actor 隔离错误。
+    /// 本机 Xcode 27 放行了，CI 的工具链不放行，于是 CI 上测试目标整个编译不过
+    /// （而这个失败长期被 `| xcpretty` 吞掉，见 .github/workflows/ci.yml）。
+    /// 仓库里其他测试类都用的这个写法，这里对齐。
+    override func tearDown() async throws {
         // 关掉本用例开的所有窗口，避免污染下一个用例
-        for window in NSApp.windows where window.title.hasPrefix("宏") || window.title == "新建宏" {
-            window.close()
+        await MainActor.run {
+            for window in NSApp.windows where window.title.hasPrefix("宏") || window.title == "新建宏" {
+                window.close()
+            }
         }
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - A1：草稿保存后重绑，而不是新开一扇窗口
