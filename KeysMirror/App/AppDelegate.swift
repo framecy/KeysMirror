@@ -31,6 +31,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
+        // 权限轮询到手后由这里决定后续动作，PermissionChecker 自己不再碰拦截器和菜单栏
+        permissionChecker.onAccessibilityGranted = { [weak self] in
+            self?.activateInterceptor()
+        }
+
         permissionChecker.refreshStatus()
         let axGranted = permissionChecker.isAccessibilityGranted
         AppLogger.shared.log("App 启动 | 辅助功能权限: \(axGranted ? "已授权" : "未授权")")
@@ -41,9 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         if axGranted {
-            let started = keyInterceptor.start()
-            AppLogger.shared.log("拦截器启动结果: \(started ? "成功" : "失败")")
-            statusBarController.update(permissionGranted: true, interceptorEnabled: keyInterceptor.isEnabled)
+            activateInterceptor()
         }
 
         registerSleepWakeObservers()
@@ -167,7 +170,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard permissionChecker.isAccessibilityGranted else { return }
         // 唤醒后事件 tap 可能已被系统销毁，重建；运行中的宏 Task 也可能被休眠扰乱，统一停掉
         MacroRunner.shared.stopAll(reason: "系统唤醒")
-        _ = keyInterceptor.start()
+        activateInterceptor()
+    }
+
+    /// 权限已具备时：起（或重建）事件 tap，并把菜单栏刷成最新状态。
+    /// 启动、系统唤醒、权限轮询到手三处共用同一段逻辑。
+    private func activateInterceptor() {
+        let started = keyInterceptor.start()
+        AppLogger.shared.log("拦截器启动结果: \(started ? "成功" : "失败")")
         statusBarController.update(permissionGranted: true, interceptorEnabled: keyInterceptor.isEnabled)
     }
 
@@ -195,6 +205,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    /// 用户改完配置切走去玩游戏，是最常见的「改完就再也不回来」路径。
+    /// 这里补一次强制落盘，把防抖窗口内的改动固化，免得进程后来被强杀时丢掉。
+    func applicationDidResignActive(_ notification: Notification) {
+        MappingStore.shared.flush()
+    }
+
     /// 退出前对称清理：停 tap、关 overlay、停宏、撤销 carbon handler、移除观察者，
     /// 最后 flushSync log buffer 避免 PR2.2 批量缓冲里最后几条丢盘。
     /// 正常退出 macOS 会回收资源；这里更多是防 SIGTERM / 调试反复启停时残留 observer。
@@ -206,6 +222,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         globalHotkey.teardown()
         NotificationCenter.default.removeObserver(self)
         NSWorkspace.shared.notificationCenter.removeObserver(self)
+        // 配置写盘是防抖的（见 MappingStore.save）——退出前必须强制落盘，
+        // 否则用户最后那几下编辑会跟着进程一起消失。
+        MappingStore.shared.flush()
         AppLogger.shared.flushSync()
     }
 }

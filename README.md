@@ -9,7 +9,7 @@
 
 **按键，即点击。**
 
-将任意键盘快捷键映射为应用窗口内的指定位置点击。光标纹丝不动，无需修改目标应用，游戏技能与工具栏按钮一键直达。
+将任意键盘快捷键映射为应用窗口内的指定位置点击。光标停在原地，无需修改目标应用，游戏技能与工具栏按钮一键直达。
 
 [下载最新版本](https://github.com/framecy/KeysMirror/releases/latest) · [查看落地页](https://framecy.github.io/KeysMirror) · [反馈问题](https://github.com/framecy/KeysMirror/issues)
 
@@ -32,7 +32,7 @@
 | 功能 | 说明 |
 |---|---|
 | **按键 → 点击映射** | 支持 ⌘ ⇧ ⌥ ⌃ Fn 等任意修饰键组合 |
-| **光标静止** | 模拟点击时鼠标指针完全不移动 |
+| **光标静止** | 模拟点击时鼠标指针停在原地。原生 macOS 应用完全不触碰光标；iOS-on-Mac 游戏受系统限制，点击瞬间指针会被隐藏约 40ms 再原位恢复（位置不变，但有短暂消失）——详见[已知限制](#已知限制) |
 | **鼠标侧键支持** | 右键、侧键均可作为触发器 |
 | **可视位置指示器** | 半透明红点实时标记每个映射位置，支持透明度调节 |
 | **多应用独立配置** | 各应用拥有独立映射组，随前台切换自动激活 |
@@ -160,11 +160,35 @@ macOS 在系统睡眠期间可能销毁 CGEventTap。KeysMirror 已监听屏幕�
 
 ---
 
+## 已知限制
+
+这些是 macOS 事件模型本身的边界，不是待修的 bug。写在这里是为了让你在遇到时知道「就是这样」，而不是以为自己配错了。
+
+### iOS-on-Mac 游戏的点击必须经过系统 session 层
+
+「设计给 iPad」的 App Store 游戏（问道手游、阴阳师等）和 PlayCover 侧载的游戏，它们的触摸事件由系统框架层从 session 级鼠标事件流翻译而来。绕过这一层的 `postToPid` 送进去的事件没人翻译，实测**完全无响应**。所以这类目标只能走 session 投递，并因此带来下面两条代价。
+
+**代价一：点击瞬间光标会短暂消失（约 40ms）。**
+Window Server 会按事件携带的坐标去挪指针，我们只能先把指针藏起来、投递完再 warp 回原位。指针的物理位置始终没变，但你会看到它闪一下。40ms 是能稳定触发按帧轮询输入（Unity / UE）的下限附近——再短，游戏可能整个漏掉这次按下。
+
+**代价二：后台点击会把游戏窗口切到前台。**
+session 层事件按「点到了谁的窗口」路由，被点到的后台窗口会被系统激活。这一点无法从应用侧阻止（`eventTargetUnixProcessID` 标记实测拦不住）。因此宏的默认策略是**仅在目标处于前台时执行**：目标不在前台就跳过这一步，你切回去它自动续跑。
+
+如果你确实需要「一边干别的一边挂机」，可以在设置里把后台宏策略改成「允许抢焦点」——代价是每跑一步游戏窗口都可能翻到最前面。这个开关默认关闭。
+
+> 原生 macOS 应用不受以上任何一条影响：走 `postToPid`，全程不触碰光标，也不会激活窗口。
+
+### 窗口内 UI 布局重排后需要重新录制
+
+映射记录的是「窗口内的相对位置」。窗口移动、等比缩放都能自动跟随；但如果游戏自身把界面重新排布了（全屏/窗口化切换、自适应布局），原来的坐标就不再指向那个按钮了。
+
+---
+
 ## 技术实现
 
 - **事件拦截**：`CGEventTap` 在 `.cgSessionEventTap` 全局监听键盘与鼠标侧键事件；收到 `tapDisabledByTimeout` / `tapDisabledByUserInput` 时自动重建 tap（此类事件底层 CGEvent 指针为 null，已专项处理）
 - **睡眠唤醒恢复**：监听 `NSWorkspace.screensDidWakeNotification` 与 `NSWorkspace.didWakeNotification`，唤醒后自动调用 `keyInterceptor.start()` 重建 tap
-- **点击模拟**：原生 macOS 应用使用 `CGEvent.postToPid`（绕过 Window Server，光标不移动）；iOS-on-Mac 游戏使用 `cgSessionEventTap` 投递配合游标冻结
+- **点击模拟**：原生 macOS 应用使用 `CGEvent.postToPid`（绕过 Window Server，全程不触碰光标）；iOS-on-Mac 游戏必须走 `cgSessionEventTap`——该运行时靠订阅 session 级鼠标移动事件流合成 UITouch，`postToPid` 送进去的事件没人翻译，实测完全无响应。因此这条路径只能「冻结光标 → 隐藏 → 投递 → warp 回原位 → 取消隐藏」，指针物理位置不变，但点击瞬间会短暂消失
 - **窗口定位**：通过 Accessibility API（`kAXPositionAttribute` / `kAXSizeAttribute`）获取目标窗口实时坐标
 - **文字输入检测**：每次键盘事件命中 profile 后，先查询 `kAXFocusedUIElementAttribute` 并读取其 `kAXRoleAttribute`，匹配到 `AXTextField` / `AXTextArea` / `AXComboBox` / `AXSearchField` 时放行按键；AX 查询失败时默认放行映射，保证功能不因权限异常而静默失效
 - **日志系统**：通过 `os_log` 写入 Console.app（可用 `log stream` 实时查看），同时追加写入 `~/Library/Caches/KeysMirror/keysmirror.log`（可 `tail -f` 跟踪）；UI 内日志面板支持折叠
@@ -174,6 +198,23 @@ macOS 在系统睡眠期间可能销毁 CGEventTap。KeysMirror 已监听屏幕�
 ---
 
 ## 更新日志
+
+### v1.7.1
+
+**这一版主要在收回 v1.7.0 后台宏许下的、系统其实做不到的承诺，并把闪退防线焊死。**
+
+- **修复**：宏在目标已处于前台时不再屏蔽物理鼠标、也不再重复抢焦点。v1.7.0 对所有宏步一律 `suppressLocalInput` + 点完 `activate`，边玩边跑宏时表现为「鼠标闪 / 顿」和「宏把游戏窗口又激活了一遍」
+- **修复**：后台宏还原前台改为 150ms 防抖，并改走 `AppResolver.activate`（新 API + `openApplication` 兜底）。原先每步点完立刻还原，而宏主循环不等点击结束，第 N 步的还原会和第 N+1 步的点击迎面撞上——表现为前台在游戏和用户窗口之间来回横跳；旧的 `activate(options:)` 在 macOS 14+ 还经常静默失败
+- **修复**：导入配置不再丢失设置。`importProfiles` 原先逐字段手工构造 `AppProfile`，每新增一个字段就静默漏一个——游戏内 HUD 的四项设置和每应用按压时长都因此在「导出再导入」后被重置。现改为整份复制、只替换 id
+- **新增**：后台宏策略开关（菜单栏面板 / 主窗设置菜单），默认**仅前台执行**。iOS-on-Mac 游戏的后台点击必然被 Window Server 切到前台，这是系统限制、应用侧无法阻止（`eventTargetUnixProcessID` 实测拦不住），因此默认不再替用户承担这个代价；需要挂机的可切到「允许后台执行」
+- **新增**：每应用可调按压时长（30 / 40 / 60 / 80ms）。这个值同时决定「点得稳不稳」与「光标闪多久」，不同游戏底线不同，40ms 只是共用折中值
+- **体验**：光标与点击点距离在 20 点以内时不再隐藏光标。隐藏本身要让指针消失整个按压时长，比那点位移更扎眼——这是「鼠标闪烁」的主要来源
+- **工程**：`MainActor.assumeIsolated` 全部替换为 `assumingMainActor`（`Utilities/MainActorAssumption.swift`），修 macOS 26/27 上 `swift_task_isCurrentExecutor` 解引用野指针导致的闪退
+- **工程**：崩溃防线门禁（`scripts/verify_crash_guard.sh`）接入 CI 与 Release，本地 / CI / 发版三处共用同一份。源码不得出现 `MainActor.assumeIsolated`，二进制不得出现 `swift_task_isCurrentExecutor`，两项均要求严格为 0。此前这道防线只存在于本机脚本
+- **性能**：配置写盘改为 300ms 防抖，拖拽排序 / 连续开关不再每次同步写盘；退出、切换到后台、导入三个时机强制落盘
+- **安全**：菜单栏「重置权限」（`tccutil reset`）增加二次确认与失败提示。此前一点即执行且失败静默——用户会以为重置过了，实际根本没成功
+- **文档**：README 新增「已知限制」章节，明确 iOS-on-Mac 的两条系统级代价；新增 [docs/RELEASE.md](docs/RELEASE.md) 说明 Developer ID 签名与公证的配置方法（Release 流程在 secrets 配齐时自动启用，未配置则退回 ad-hoc）
+- **测试**：179 个测试全过。新增覆盖宏前台/后台分支、`ClickSimulator` completion 回调与光标隐藏阈值、按压时长夹取、写盘防抖、导入字段保全
 
 ### v1.7.0
 - **界面重构**：全面替换旧的单窗口配置界面（`ConfigurationWindow`/`MappingEditorView`/`MacroEditorView` 已删除），新增独立的主窗口（`MainWindow`/`MainWindowController`）、侧栏 + Inspector 布局（`AppSidebar`/`MappingInspector`/`MacroInspector`）、独立宏编辑窗口（`MacroEditorWindowController`）、统一设计系统（`Theme`）、首次运行引导（`OnboardingView`）、菜单栏下拉面板（`MenuBarPanel`/`MacroMarqueeView`）与诊断窗口（`DiagnosticsWindow`）

@@ -60,6 +60,17 @@ final class ClickSimulator {
     /// 这类按帧轮询输入的 PlayCover 游戏上验证点击可靠性没有退化。
     static let clickDwell: TimeInterval = 0.04
 
+    /// 光标离点击点多远（点）才值得为这次点击隐藏光标。
+    ///
+    /// 隐藏不是免费的：指针会凭空消失整个 dwell（40ms）。对「边玩边按映射键」的玩家，
+    /// 准星每按一次键就闪掉一次，比 sprite 挪一小段更难受——这正是「鼠标闪烁」的主要来源。
+    /// 位移小到这个范围内时肉眼分辨不出来，直接不藏，代价为零。
+    ///
+    /// 20 点 ≈ 一个标准光标的高度：再大就能看出指针「跳」了一下。
+    /// 注意隐藏跳过后 `associate(false)` / `warp` 依然照做——那两步是防止真实鼠标
+    /// 在投递期间把点击带偏的保护，与视觉无关，任何情况下都不能省。
+    static let cursorHideDistanceThreshold: CGFloat = 20
+
     /// 点击投递专用串行队列。
     ///
     /// 整段 mouseMoved→down→停留→up→还原 必须在**同一个自始至终不让出 run loop 的线程**
@@ -118,17 +129,24 @@ final class ClickSimulator {
     }
 
     /// - Parameter suppressLocalInput: 投递期间屏蔽物理鼠标事件，避免用户正在动鼠标时把这一击
-    ///   挤掉。仅后台跑宏该开；前台映射保持关闭，否则玩家的鼠标每按一次键就顿一下。
+    ///   挤掉。**仅目标不在前台的后台宏**该开；目标已在前台时绝不能开——否则会吞玩家鼠标，
+    ///   和按键映射叠用时表现为鼠标闪/顿。前台映射同样保持关闭。
     /// - Parameter tagTargetProcess: 给 session 层事件打上目标进程标记
     ///   （`eventTargetUnixProcessID`）。事件依然走 session 流——iOS-on-Mac 运行时靠它维护
-    ///   指针位置，绕不开——但被标记后 Window Server 有机会直接投给该进程，从而跳过
-    ///   「点击不活跃窗口 → 激活该窗口」的命中测试路径，即宏跑着跑着把游戏顶到前台的成因。
-    ///   ⚠️ 未经实测验证：若发现点击失效，先怀疑这里。
+    ///   指针位置，绕不开。`movedBack` 靠它避免广播给光标下的别的 app。
+    ///   ⚠️ 它**不能**阻止 Window Server 把被点到的后台窗口激活到前台；防激活靠调用方
+    ///   在后台场景用 `completion` 还原前台，前台场景则根本不要走这套参数。
+    /// - Parameter dwell: 按下与抬起之间的停留时长。传 nil 用全局默认 `clickDwell`。
+    ///   每个应用配置可以覆盖它——见 `AppProfile.clickDwellMs`。
+    /// - Parameter completion: 点击序列投递完成后在主线程执行的回调。
+    ///   仅后台宏用于「若本次点击把目标顶到前台，则还原点击前的前台 app」。
     func leftClick(
         at point: CGPoint,
         targetApp: NSRunningApplication? = nil,
+        dwell dwellOverride: TimeInterval? = nil,
         suppressLocalInput: Bool = false,
-        tagTargetProcess: Bool = false
+        tagTargetProcess: Bool = false,
+        completion: (() -> Void)? = nil
     ) {
         let source = suppressLocalInput ? suppressingEventSource : eventSource
         guard
@@ -139,7 +157,7 @@ final class ClickSimulator {
         let pid = targetApp?.processIdentifier ?? 0
         let isNative = targetApp.map { isNativeMacApp($0) } ?? true
 
-        let dwell = Self.clickDwell
+        let dwell = Self.resolveDwell(dwellOverride)
         let sleep = sleepForDwell
 
         // 实验开关：iOS-on-Mac 应用本该走方案 B，开关打开时改走方案 A 做实机验证。
@@ -157,10 +175,14 @@ final class ClickSimulator {
             // 完全绕过 Window Server，光标本身不会移动，无需任何光标管理。
             // 仍然走后台队列同步等待，好让按压跨过目标的输入轮询间隔。
             let post = postToPid
+            let savedCompletion = completion
             runClickSequence {
                 post(down, pid)
                 sleep(dwell)
                 post(up, pid)
+                if let savedCompletion {
+                    DispatchQueue.main.async { savedCompletion() }
+                }
             }
         } else {
             // 方案 B：Session 层投递 — iOS-on-Mac App
@@ -197,6 +219,7 @@ final class ClickSimulator {
             let audit = tagTargetProcess
             let tagPid: pid_t = tagTargetProcess ? pid : 0
             let auditName = targetApp?.localizedName ?? "?"
+            let savedCompletion = completion
             runClickSequence {
                 if audit {
                     Task { @MainActor in
@@ -208,7 +231,12 @@ final class ClickSimulator {
                 // mouseCursorPosition 把指针 sprite 挪到点击点，哪怕已 warp 回原位收尾，
                 // 中间那一帧真实可见——用户看到的就是「点一下鼠标闪一下」。隐藏起来，
                 // 整段跳到点击点再跳回来的过程就没有画面，warp 完成后立即取消隐藏。
-                ops.hide()
+                //
+                // 但位移小到看不出来时就别藏了：隐藏本身要让指针消失整个 dwell，
+                // 比那点位移更扎眼（见 cursorHideDistanceThreshold）。
+                let travel = hypot(point.x - savedPos.x, point.y - savedPos.y)
+                let shouldHideCursor = travel > Self.cursorHideDistanceThreshold
+                if shouldHideCursor { ops.hide() }
                 ops.associate(false)
                 ops.post(moved)
                 ops.post(down)
@@ -228,17 +256,34 @@ final class ClickSimulator {
                 }
                 ops.warp(savedPos)
                 ops.associate(true)
-                ops.unhide()
+                if shouldHideCursor { ops.unhide() }
                 if audit {
                     Task { @MainActor in
                         AppLogger.shared.log("【点击·投递结束】\(auditName)", type: "ACTION")
                     }
+                }
+                if let savedCompletion {
+                    DispatchQueue.main.async { savedCompletion() }
                 }
             }
         }
     }
 
     // MARK: - Internal (testable)
+
+    /// 单次按压时长的合法区间。
+    ///
+    /// 下限 20ms：实测 32ms 是按帧轮询输入（PlayCover 上的崩坏：星穹铁道）的可靠底线，
+    /// 20ms 已经进入「掉帧时可能整个漏掉这次按下」的区域，再低就不是调优而是坏掉了。
+    /// 上限 200ms：超过这个值目标 app 会开始把它当成长按。
+    static let dwellRange: ClosedRange<TimeInterval> = 0.02...0.2
+
+    /// 把每应用覆盖值收进合法区间；没给覆盖值就用全局默认。
+    /// 配置文件是用户可手改的 JSON，这里必须兜底，不能相信写进来的数。
+    static func resolveDwell(_ override: TimeInterval?) -> TimeInterval {
+        guard let override else { return clickDwell }
+        return min(max(override, dwellRange.lowerBound), dwellRange.upperBound)
+    }
 
     /// 判断是否为原生 macOS App（非 iOS-on-Mac）
     /// iOS App 的 Info.plist 中会包含 LSRequiresIPhoneOS = true

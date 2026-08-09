@@ -150,16 +150,51 @@ struct MenuBarPanel: View {
 
             Divider()
 
-            // 与主窗「设置 → 在 Dock 中显示」共用同一个偏好字段，两处状态天然同步
-            Toggle("在 Dock 中显示", isOn: Binding(
-                get: { preferences.preferences.showInDock },
-                set: { newValue in
-                    preferences.update { $0.showInDock = newValue }
-                    preferences.applyDockVisibility()
+            // 两行设置统一成「标签靠左、控件靠右」的系统设置行样式。
+            // 直接用 Toggle / Picker 自带的标签会按内容宽度居中，两行左边缘对不齐，
+            // 挤在一起看着像没对齐——所以标签拆出来自己排，控件 labelsHidden。
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                // 与主窗「设置 → 在 Dock 中显示」共用同一个偏好字段，两处状态天然同步
+                HStack {
+                    Text("在 Dock 中显示").font(Theme.Typography.body)
+                    Spacer(minLength: Theme.Spacing.sm)
+                    Toggle("", isOn: Binding(
+                        get: { preferences.preferences.showInDock },
+                        set: { newValue in
+                            preferences.update { $0.showInDock = newValue }
+                            preferences.applyDockVisibility()
+                        }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
                 }
-            ))
-            .toggleStyle(.switch)
-            .font(Theme.Typography.body)
+
+                // 同样与主窗设置菜单共用同一个偏好字段。放在菜单栏是因为这个选择和
+                // 「我现在要不要挂机」强相关——用户往往是宏跑起来之后才想改它。
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text("后台宏策略").font(Theme.Typography.body)
+                        Spacer(minLength: Theme.Spacing.sm)
+                        Picker("", selection: Binding(
+                            get: { preferences.preferences.backgroundMacroPolicy },
+                            set: { newValue in preferences.update { $0.backgroundMacroPolicy = newValue } }
+                        )) {
+                            ForEach(BackgroundMacroPolicy.allCases, id: \.self) { policy in
+                                Text(policy.title).tag(policy)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .fixedSize()
+                    }
+
+                    // 说明文字跟着选项变：用户不用点开就知道当前这档意味着什么
+                    Text(preferences.preferences.backgroundMacroPolicy.detail)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

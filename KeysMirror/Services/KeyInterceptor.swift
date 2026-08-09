@@ -1,6 +1,15 @@
 import AppKit
 @preconcurrency import CoreGraphics
 
+extension Notification.Name {
+    /// 「刚刚拦下并投递了一次输入」。菜单栏图标据此闪一下绿色。
+    ///
+    /// 用通知而不是直接调 `StatusBarController.shared`：Services 层不该知道菜单栏的存在，
+    /// 否则业务逻辑和某个具体 UI 控件绑死（换个反馈形式就得改 Service）。
+    /// 发送方还有 MacroRunner。
+    static let inputActivityDidFire = Notification.Name("KeysMirror.InputActivityDidFire")
+}
+
 @MainActor
 final class KeyInterceptor {
     static let shared = KeyInterceptor()
@@ -146,7 +155,7 @@ final class KeyInterceptor {
         }) {
             if MacroRunner.shared.isRunning(macro.id) {
                 MacroRunner.shared.stop(macroId: macro.id, reason: "用户再按触发键")
-                StatusBarController.shared.flashActivity()
+                NotificationCenter.default.post(name: .inputActivityDidFire, object: nil)
                 return macro.blockInput ? nil : Unmanaged.passRetained(event)
             }
             if macro.isEnabled {
@@ -180,7 +189,10 @@ final class KeyInterceptor {
             }
 
             guard let windowFrame = windowLocator.focusedWindowFrame(for: bundleId) else {
-                logger.log("匹配成功但无法读取 [\(bundleId)] 窗口位置", type: "ERROR")
+                // 走到这里说明 AX 三级查询和 CGWindowList 兜底全都没拿到窗口——通常是目标窗口
+                // 刚好最小化 / 正在切换空间，或 app 处于无窗口状态。放行原始按键（fail-open），
+                // 用户至少还能用原键操作，而不是按下去石沉大海。
+                logger.log("匹配成功但读不到 [\(bundleId)] 窗口位置（AX 与窗口列表均无结果，窗口可能已最小化或正在切换）", type: "ERROR")
                 return Unmanaged.passRetained(event)
             }
 
@@ -210,7 +222,7 @@ final class KeyInterceptor {
             }
             
             // 模拟点击
-            clickSimulator.leftClick(at: clickPoint, targetApp: frontApp)
+            clickSimulator.leftClick(at: clickPoint, targetApp: frontApp, dwell: profile.clickDwellSeconds)
 
             // 结构化触发记录（诊断窗直接渲染）
             logger.recordTrigger(
@@ -231,7 +243,7 @@ final class KeyInterceptor {
             // 如果 blockInput = true，拦截按键不传递到游戏
             // 如果 blockInput = false，按键同时传递到游戏
             if mapping.blockInput {
-                StatusBarController.shared.flashActivity()
+                NotificationCenter.default.post(name: .inputActivityDidFire, object: nil)
                 return nil  // 拦截按键
             } else {
                 // 不拦截，按键同时传递到游戏
@@ -276,7 +288,7 @@ final class KeyInterceptor {
         // Swift 仍将其包装成非 Optional，手动转为 nil 避免使用悬空指针
         let optionalEvent: CGEvent? = (type == .tapDisabledByTimeout || type == .tapDisabledByUserInput) ? nil : event
         let unsafeEvent = UnsafeOptionalEvent(value: optionalEvent)
-        return MainActor.assumeIsolated {
+        return assumingMainActor {
             interceptor.processEvent(type: type, event: unsafeEvent.value)
         }
     }

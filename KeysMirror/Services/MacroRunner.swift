@@ -30,6 +30,17 @@ final class MacroRunner: ObservableObject {
     private var tasks: [UUID: Task<Void, Never>] = [:]
     private let logger = AppLogger.shared
 
+    /// 挂起中的「还原前台」。见 `scheduleFrontmostRestore`。
+    private var pendingRestore: Task<Void, Never>?
+
+    /// 连续 150ms 内没有新的后台点击，才认为这一阵子点完了，可以把前台还回去。
+    /// 取这个值是因为最短的宏步间隔通常也在百毫秒量级；再短会让还原和下一步点击打架，
+    /// 再长则用户会觉得「点完半天才切回来」。
+    static let restoreDebounce: TimeInterval = 0.15
+
+    /// 已经就「目标在后台被跳过」记过日志的宏。防止无限循环宏把日志刷屏。
+    private var skipLoggedMacroIds: Set<UUID> = []
+
     var isAnyRunning: Bool { !running.isEmpty }
 
     func isRunning(_ macroId: UUID) -> Bool {
@@ -65,6 +76,8 @@ final class MacroRunner: ObservableObject {
             logger.log("【宏停止】\(label)\(reason.map { "（\($0)）" } ?? "")", type: "ACTION")
         }
         running.removeAll { $0.id == macroId }
+        skipLoggedMacroIds.remove(macroId)
+        if running.isEmpty { cancelPendingRestore() }
         NotificationCenter.default.post(name: .macroRunStateDidChange, object: self)
     }
 
@@ -78,7 +91,16 @@ final class MacroRunner: ObservableObject {
             logger.log("【宏停止】\(macro.label)\(reason.map { "（\($0)）" } ?? "")", type: "ACTION")
         }
         running.removeAll()
+        skipLoggedMacroIds.removeAll()
+        cancelPendingRestore()
         NotificationCenter.default.post(name: .macroRunStateDidChange, object: self)
+    }
+
+    /// 全部宏都停了就没有「还原前台」的语义了——挂起中的那次必须取消，
+    /// 否则用户手动停完宏、自己切到别的窗口，150ms 后前台会被莫名其妙抢走。
+    private func cancelPendingRestore() {
+        pendingRestore?.cancel()
+        pendingRestore = nil
     }
 
     // MARK: - Pure helpers (testable)
@@ -243,11 +265,27 @@ final class MacroRunner: ObservableObject {
         macro: MacroAction,
         bundleId: String
     ) {
-        // 目标 app 不再需要在前台——session 层事件按「光标位置下的窗口」路由，
-        // 实测（问道 / 阴阳师）游戏在后台也能收到点击且不会抢走焦点，
-        // 因此宏可以在窗口平铺、用户操作别的 app 时继续跑。这里只要求进程还活着。
+        // 这里只要求进程还活着；「要不要求它在前台」由下面的 backgroundMacroPolicy 决定。
+        //
+        // ⚠️ 历史遗留的错误认知（v1.7.0 的后台宏就是被它误导设计出来的）：曾以为 session 层
+        // 投递「在后台也能点中且不抢焦点」。实测不成立——session 事件按「点到了谁的窗口」路由，
+        // 被点到的后台窗口会被 Window Server 激活到前台，`eventTargetUnixProcessID` 标记拦不住。
+        // 详见 ClickSimulator.leftClick 的参数说明。
         guard let targetApp = AppResolver.shared.runningApplication(bundleIdentifier: bundleId) else {
             stop(macroId: macro.id, reason: "目标 app 已退出")
+            return
+        }
+
+        // 前台判定提前到这里：策略是「仅前台执行」时可以直接跳过，
+        // 省掉后面那次可能阻塞主线程的 AX 窗口查询。
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let targetIsFront = frontApp?.processIdentifier == targetApp.processIdentifier
+        let policy = PreferencesStore.shared.preferences.backgroundMacroPolicy
+
+        if !targetIsFront && policy == .frontmostOnly {
+            // 跳过而不是停止：用户切回目标就自然续跑，不用重新按一次触发键。
+            // 每步都记日志太吵（无限循环宏会刷屏），交给节流日志只在状态变化时说一次。
+            logSkippedBecauseBackground(macro: macro, frontAppName: frontApp?.localizedName)
             return
         }
 
@@ -289,8 +327,9 @@ final class MacroRunner: ObservableObject {
             return
         }
 
-        // 安全网 2：目标必须真的露在最上层。宏不再要求前台，用户随时可能把别的窗口拖到
-        // 游戏上面——session 层点击会直接打进那个窗口（浏览器的发送、编辑器的删除都可能被点到）。
+        // 安全网 2：目标必须真的露在最上层。即使目标是前台 app，它的窗口也可能被别的
+        // 浮动窗口盖住一角——session 层点击会直接打进那个窗口（浏览器的发送、编辑器的删除
+        // 都可能被点到）。选了「允许后台执行」时这条尤其关键。
         if let occluder = WindowLocator.shared.occludingApp(at: clickPoint, ownedBy: targetApp.processIdentifier) {
             logger.log("宏 [\(macro.label)] 第 \(stepIndex + 1) 步：点击点 (\(Int(clickPoint.x)),\(Int(clickPoint.y))) 被「\(occluder)」遮挡，已跳过", type: "WARN")
             return
@@ -303,13 +342,86 @@ final class MacroRunner: ObservableObject {
         let clickText = clickCount > 1 ? " ×\(clickCount)" : ""
         logger.log("【宏步骤】[\(macro.label)] \(iterText) - 第 \(stepIndex + 1)/\(macro.steps.count) 步\(driftText) → 点击 (\(Int(clickPoint.x)),\(Int(clickPoint.y)))\(clickText)", type: "ACTION")
 
-        // ClickSimulator 内部走串行队列，连续调用天然依次投递，无需额外间隔
+        // ClickSimulator 内部走串行队列，连续调用天然依次投递，无需额外间隔。
+        // 前台/后台的参数差异全部收敛在 `clickPlan` 里，便于单测锁死（见 MacroRunnerTests）。
+        let plan = Self.clickPlan(targetIsFront: targetIsFront)
+        // 真的点出去了 → 清掉「已就跳过记过日志」的标记，下次再被跳过时还会提示一次。
+        skipLoggedMacroIds.remove(macro.id)
+        let previousApp = frontApp
         for _ in 0..<clickCount {
-            // 宏可能在用户操作别的 app 时后台执行，投递期间屏蔽物理鼠标，
-            // 避免用户手上的鼠标移动把这一击挤掉
-            ClickSimulator.shared.leftClick(at: clickPoint, targetApp: targetApp, suppressLocalInput: true, tagTargetProcess: true)
+            ClickSimulator.shared.leftClick(
+                at: clickPoint,
+                targetApp: targetApp,
+                dwell: profile.clickDwellSeconds,
+                suppressLocalInput: plan.suppressLocalInput,
+                tagTargetProcess: plan.tagTargetProcess,
+                completion: plan.restoresPreviousApp ? { [weak self] in
+                    self?.scheduleFrontmostRestore(to: previousApp, target: targetApp)
+                } : nil
+            )
         }
-        StatusBarController.shared.flashActivity()
+        NotificationCenter.default.post(name: .inputActivityDidFire, object: nil)
+    }
+
+    /// 单次点击的投递参数。前台与后台的全部差异就这三个开关。
+    struct ClickPlan: Equatable {
+        /// 投递期间屏蔽物理鼠标事件。
+        var suppressLocalInput: Bool
+        /// 给 session 事件打目标进程标记（`movedBack` 靠它不广播给光标下的别的 app）。
+        var tagTargetProcess: Bool
+        /// 点完是否要把前台还给点击前那个 app。
+        var restoresPreviousApp: Bool
+    }
+
+    /// 目标已在前台（用户边玩边跑宏 + 按键映射）：必须和 KeyInterceptor 走同一条路径——
+    /// 不开 `suppressLocalInput`（否则宏步会吞掉玩家的物理鼠标，和映射叠在一起就是「鼠标闪/顿」），
+    /// 也不还原前台（游戏本来就在前台，再 activate 等于每步重抢一次焦点，
+    /// 表现成「宏把游戏窗口又激活了一遍」）。
+    ///
+    /// 目标在后台（用户显式选了「允许后台执行」）：session 投递会把窗口顶到前台，
+    /// 只能点完再还原。此时才需要 suppress + tag。
+    static func clickPlan(targetIsFront: Bool) -> ClickPlan {
+        ClickPlan(
+            suppressLocalInput: !targetIsFront,
+            tagTargetProcess: !targetIsFront,
+            restoresPreviousApp: !targetIsFront
+        )
+    }
+
+    /// 还原前台——**防抖**，不是每步点完都立刻抢回去。
+    ///
+    /// 为什么必须防抖：宏的主循环不等点击投递完成就往下走。步骤间隔只有几十毫秒时，
+    /// 第 N 步的「还原前台」会和第 N+1 步的点击（它又会把目标顶到前台）迎面撞上，
+    /// 用户看到的就是前台在游戏和自己的窗口之间来回横跳。等到连续 `restoreDebounce`
+    /// 内不再有新的后台点击，说明这一阵子点完了，这时候还一次即可。
+    private func scheduleFrontmostRestore(to previousApp: NSRunningApplication?, target: NSRunningApplication) {
+        // previous 就是目标自身 → 本来就没抢谁的焦点，不用还。
+        guard let previousApp, previousApp.processIdentifier != target.processIdentifier else { return }
+
+        pendingRestore?.cancel()
+        let targetPid = target.processIdentifier
+        pendingRestore = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.restoreDebounce * 1_000_000_000))
+            guard !Task.isCancelled, self != nil else { return }
+            // 只在目标确实还占着前台时才还原。用户在这段间隔里自己切走了 → 什么都别做，
+            // 否则会把用户刚打开的窗口又抢掉。
+            guard NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPid else { return }
+            guard previousApp.isTerminated == false else { return }
+            AppResolver.shared.activate(previousApp)
+        }
+    }
+
+    /// 「跳过因为目标在后台」的日志节流：无限循环宏每轮都会走到这里，
+    /// 不节流会把日志刷成一片。只在从「在跑」变成「被跳过」时说一次。
+    private func logSkippedBecauseBackground(macro: MacroAction, frontAppName: String?) {
+        guard !skipLoggedMacroIds.contains(macro.id) else { return }
+        skipLoggedMacroIds.insert(macro.id)
+        let front = frontAppName.map { "（当前前台：\($0)）" } ?? ""
+        logger.log(
+            "宏 [\(macro.label)] 目标不在前台，已跳过\(front)。切回目标窗口即自动继续；" +
+            "要让它在后台也跑，去 设置 → 后台宏策略 改成「允许后台执行」。",
+            type: "WARN"
+        )
     }
 
     // MARK: - 前台变化

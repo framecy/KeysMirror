@@ -143,6 +143,16 @@ struct MainWindow: View {
                         preferences.applyDockVisibility()
                     }
                 ))
+                // 目标不在前台时宏怎么办。默认「仅前台执行」——iOS-on-Mac 游戏的后台点击
+                // 必然被系统切到前台，这是系统限制修不掉，只能让用户自己选要不要接受。
+                Picker("后台宏策略", selection: Binding(
+                    get: { preferences.preferences.backgroundMacroPolicy },
+                    set: { newValue in preferences.update { $0.backgroundMacroPolicy = newValue } }
+                )) {
+                    ForEach(BackgroundMacroPolicy.allCases, id: \.self) { policy in
+                        Text(policy.title).tag(policy)
+                    }
+                }
                 Divider()
                 Button("使用引导") { OnboardingController.shared.show() }
             } label: {
@@ -202,6 +212,10 @@ struct MainWindow: View {
 
     /// 当前配置的标题条：只放**与这个配置有关**的操作（启用开关 + 应用设置）。
     /// 全局操作（添加应用 / 导入导出 / 撤销…）一律在头栏，两处互不重复。
+    /// 与 `ClickSimulator.clickDwell` 保持一致的默认档位（毫秒）。
+    /// 选中它等价于「不覆盖」，存回 profile 时写 nil，这样以后改全局默认值老配置能跟着走。
+    private static let defaultDwellMs = Int((ClickSimulator.clickDwell * 1000).rounded())
+
     private func profileHeader(_ profile: AppProfile) -> some View {
         HStack(alignment: .center, spacing: Theme.Spacing.md) {
             VStack(alignment: .leading, spacing: 2) {
@@ -232,6 +246,23 @@ struct MainWindow: View {
                         store.updateProfile(updated)
                     }
                 ))
+                Divider()
+                // 按压时长同时决定「点得稳不稳」和「光标闪多久」，两头都有代价，
+                // 所以给的是几个实测档位而不是一个自由输入框——避免用户填出一个
+                // 让点击静默失效的数（ClickSimulator 那边还会再夹一次范围兜底）。
+                Picker("按压时长", selection: Binding(
+                    get: { profile.clickDwellMs ?? Self.defaultDwellMs },
+                    set: { newValue in
+                        var updated = profile
+                        updated.clickDwellMs = newValue == Self.defaultDwellMs ? nil : newValue
+                        store.updateProfile(updated)
+                    }
+                )) {
+                    Text("30 毫秒（更少闪烁）").tag(30)
+                    Text("40 毫秒（默认）").tag(Self.defaultDwellMs)
+                    Text("60 毫秒（更稳）").tag(60)
+                    Text("80 毫秒（最稳）").tag(80)
+                }
                 Divider()
                 Button("导出此配置…") { exportProfile(profile) }
                 Button("删除配置…", role: .destructive) { model.pendingProfileDeletion = profile }

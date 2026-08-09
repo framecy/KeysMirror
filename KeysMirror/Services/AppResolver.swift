@@ -81,7 +81,15 @@ final class AppResolver {
         guard let application = runningApplication(bundleIdentifier: bundleIdentifier) else {
             return false
         }
+        return activate(application)
+    }
 
+    /// 同上，但直接作用于一个已经拿在手上的 `NSRunningApplication`。
+    ///
+    /// 后台宏还原前台时需要这个重载：它要还原的是「点击前那个前台 app」的**那个进程**，
+    /// 而不是按 bundleId 重新查一遍（同 bundleId 可能有多个实例，查回来的未必是同一个）。
+    @discardableResult
+    func activate(_ application: NSRunningApplication) -> Bool {
         application.unhide()
 
         let activated: Bool

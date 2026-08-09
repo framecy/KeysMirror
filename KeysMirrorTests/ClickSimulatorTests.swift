@@ -67,23 +67,31 @@ final class ClickSimulatorTests: XCTestCase {
 
     /// v1.6.2 新增：iOS-on-Mac 路径必须按 disassociate → post → warp → re-associate 的顺序，
     /// 否则会有一帧光标停在 click 点导致视觉抖动 / 连击「漂移」。
+    ///
+    /// hide / unhide 也必须出现在这条默认序列里并且**夹住**整段：先藏起来再动光标，
+    /// 否则 disassociate 期间 Window Server 仍会把指针 sprite 挪到点击点，
+    /// 中间那一帧真实可见——用户看到的就是「点一下鼠标闪一下」。
     func testIosOnMacClickFollowsCorrectCursorOrdering() {
         var calls: [String] = []
         ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
             currentLocation: { calls.append("save"); return CGPoint(x: 100, y: 100) },
             associate: { connected in calls.append("associate(\(connected ? "true" : "false"))") },
             warp: { p in calls.append("warp(\(Int(p.x)),\(Int(p.y)))") },
-            post: { calls.append(Self.describe($0)) }
+            post: { calls.append(Self.describe($0)) },
+            hide: { calls.append("hide") },
+            unhide: { calls.append("unhide") }
         )
         ClickSimulator.shared.runClickSequence = { work in work() }   // 就地同步执行
         ClickSimulator.shared.sleepForDwell = { _ in calls.append("sleep") }
         defer { Self.restore() }
 
         // targetApp = nil → pid = 0 → 走 iOS-on-Mac 分支
+        // 光标在 (100,100)、点击点在 (500,500)，距离远超隐藏阈值 → 必须走完整的隐藏序列
         ClickSimulator.shared.leftClick(at: CGPoint(x: 500, y: 500), targetApp: nil)
 
         XCTAssertEqual(calls, [
             "save",                 // 先存当前光标位置
+            "hide",                 // 先隐藏再动它，否则中间那一帧的位移用户看得见
             "associate(false)",     // 再断开光标关联
             "moved(500,500)",       // 先让目标 app 把指针挪到点击点
             "down(500,500)",
@@ -92,8 +100,134 @@ final class ClickSimulatorTests: XCTestCase {
             "up(500,500)",
             "moved(100,100)",       // 指针送回原处，不留 hover 态
             "warp(100,100)",        // 关键：先 warp 回原位
-            "associate(true)"       // 然后才 re-associate，避免光标抖动
+            "associate(true)",      // 然后才 re-associate，避免光标抖动
+            "unhide"                // warp 完成后立刻恢复可见
         ])
+    }
+
+    /// 光标已经在点击点附近时跳过隐藏。
+    ///
+    /// 隐藏本身是有代价的：指针会凭空消失整个 dwell（40ms）。当 sprite 的位移小到
+    /// 肉眼分辨不出来时，为它藏光标 40ms 反而更难受——玩家每按一次映射键就看不见准星一下。
+    /// 这条用例把「近距离不隐藏」的行为锁死，同时保证 associate/warp 这层保护仍在。
+    func testNearbyClickSkipsCursorHiding() {
+        var calls: [String] = []
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { CGPoint(x: 500, y: 500) },
+            associate: { connected in calls.append("associate(\(connected ? "true" : "false"))") },
+            warp: { _ in calls.append("warp") },
+            post: { calls.append(Self.describe($0)) },
+            hide: { calls.append("hide") },
+            unhide: { calls.append("unhide") }
+        )
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        // 距离 (5,5) → 远小于阈值
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 505, y: 505), targetApp: nil)
+
+        XCTAssertFalse(calls.contains("hide"), "近距离点击不该隐藏光标——隐藏比位移更显眼")
+        XCTAssertFalse(calls.contains("unhide"))
+        XCTAssertEqual(calls.first, "associate(false)", "但冻结与还原这层保护必须仍在")
+        XCTAssertEqual(calls.last, "associate(true)")
+    }
+
+    /// 刚好跨过阈值就必须恢复隐藏——阈值不能被无意中调大到「实际上永不隐藏」。
+    func testClickBeyondThresholdStillHidesCursor() {
+        var calls: [String] = []
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { .zero },
+            associate: { _ in },
+            warp: { _ in },
+            post: { _ in },
+            hide: { calls.append("hide") },
+            unhide: { calls.append("unhide") }
+        )
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        let justOver = ClickSimulator.cursorHideDistanceThreshold + 1
+        ClickSimulator.shared.leftClick(at: CGPoint(x: justOver, y: 0), targetApp: nil)
+
+        XCTAssertEqual(calls, ["hide", "unhide"])
+    }
+
+    // MARK: - 每应用按压时长
+
+    func testDwellFallsBackToGlobalDefaultWhenUnset() {
+        XCTAssertEqual(ClickSimulator.resolveDwell(nil), ClickSimulator.clickDwell)
+    }
+
+    func testDwellOverrideIsUsedWhenInRange() {
+        XCTAssertEqual(ClickSimulator.resolveDwell(0.06), 0.06, accuracy: 0.0001)
+    }
+
+    /// mappings.json 是用户可以手改的纯文本，写进来的数不能直接信：
+    /// 太小会让按帧轮询输入的游戏整个漏掉这次按下（点击静默失效），
+    /// 太大会被目标 app 当成长按。两头都必须夹住。
+    func testDwellOverrideIsClampedIntoSafeRange() {
+        XCTAssertEqual(ClickSimulator.resolveDwell(0.001), ClickSimulator.dwellRange.lowerBound)
+        XCTAssertEqual(ClickSimulator.resolveDwell(5.0), ClickSimulator.dwellRange.upperBound)
+        XCTAssertEqual(ClickSimulator.resolveDwell(-1), ClickSimulator.dwellRange.lowerBound)
+    }
+
+    /// 覆盖值要真的传到那次阻塞停留上，而不是算完就丢。
+    func testProfileDwellOverrideReachesTheActualSleep() {
+        var sleptFor: TimeInterval?
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { .zero }, associate: { _ in }, warp: { _ in }, post: { _ in }
+        )
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { sleptFor = $0 }
+        defer { Self.restore() }
+
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 300, y: 300), targetApp: nil, dwell: 0.08)
+        XCTAssertEqual(try XCTUnwrap(sleptFor), 0.08, accuracy: 0.0001)
+    }
+
+    // MARK: - completion 回调
+
+    /// 后台宏靠 completion 还原前台。它必须在整段投递**跑完之后**才触发，
+    /// 且回到主线程——早一步还原，点击就会落在刚被切走的窗口上。
+    func testCompletionFiresOnMainThreadAfterSequenceFinishes() {
+        var calls: [String] = []
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { .zero },
+            associate: { _ in },
+            warp: { _ in },
+            post: { calls.append(Self.describe($0)) }
+        )
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        let done = expectation(description: "completion 被调用")
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 10, y: 20), targetApp: nil) {
+            XCTAssertTrue(Thread.isMainThread, "completion 里要碰 AppKit，必须在主线程")
+            XCTAssertEqual(calls.last, "moved(0,0)", "整段投递必须已经跑完")
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 1.0)
+    }
+
+    /// 方案 A（原生 macOS 应用）同样要回调 completion——两条路径的契约必须一致，
+    /// 否则「目标是原生 app 的后台宏」会永远还原不了前台。
+    func testCompletionAlsoFiresOnPostToPidPath() {
+        ClickSimulator.shared.clearNativeCacheForTesting()
+        ClickSimulator.shared.infoPlistProvider = { _ in ["LSRequiresIPhoneOS": false] as NSDictionary }
+        ClickSimulator.shared.postToPid = { _, _ in }
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        let done = expectation(description: "方案 A 也要回调 completion")
+        ClickSimulator.shared.leftClick(at: .zero, targetApp: NSRunningApplication.current) {
+            XCTAssertTrue(Thread.isMainThread)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 1.0)
     }
 
     private static func restore() {

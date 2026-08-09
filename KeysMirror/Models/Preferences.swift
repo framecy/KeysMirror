@@ -13,14 +13,19 @@ struct Preferences: Codable {
     /// Dock 里就有图标可以点。菜单栏面板与主窗设置菜单共用这一个字段，避免两处状态不同步。
     var showInDock: Bool
 
+    /// 目标不在前台时，宏该怎么办。默认「仅前台执行」，理由见 `BackgroundMacroPolicy`。
+    var backgroundMacroPolicy: BackgroundMacroPolicy
+
     init(
         globalToggleHotkey: HotkeyConfig? = .defaultToggle,
         hudCycleHotkey: HotkeyConfig? = .defaultHUDCycle,
-        showInDock: Bool = false
+        showInDock: Bool = false,
+        backgroundMacroPolicy: BackgroundMacroPolicy = .frontmostOnly
     ) {
         self.globalToggleHotkey = globalToggleHotkey
         self.hudCycleHotkey = hudCycleHotkey
         self.showInDock = showInDock
+        self.backgroundMacroPolicy = backgroundMacroPolicy
     }
 
     init(from decoder: Decoder) throws {
@@ -29,6 +34,42 @@ struct Preferences: Codable {
         // 旧 preferences.json 没有这个字段 → 用默认 ⌃⇧H
         self.hudCycleHotkey = try c.decodeIfPresent(HotkeyConfig.self, forKey: .hudCycleHotkey) ?? .defaultHUDCycle
         self.showInDock = try c.decodeIfPresent(Bool.self, forKey: .showInDock) ?? false
+        // v1.7.1 新增。旧配置文件里没有 → 落到 .frontmostOnly，
+        // 也就是把 v1.7.0 那个「后台也跑、代价是抢焦点」的行为默认关掉。
+        self.backgroundMacroPolicy = try c.decodeIfPresent(BackgroundMacroPolicy.self, forKey: .backgroundMacroPolicy)
+            ?? .frontmostOnly
+    }
+}
+
+/// 目标 app 不在前台时宏的行为策略。
+///
+/// 为什么需要这个开关：iOS-on-Mac 游戏的点击必须走 session 层投递，而 session 层事件
+/// 按「点到了谁的窗口」路由——被点到的后台窗口会被 Window Server 激活到前台。这一点
+/// **无法从应用侧阻止**（`eventTargetUnixProcessID` 标记实测拦不住），点完再 `activate`
+/// 抢回来只是补丁，必然留下焦点抖动的窗口期。
+///
+/// 与其让用户遇到「宏怎么老把游戏翻上来」而困惑，不如默认老实一点：目标不在前台就
+/// 跳过这一步，用户切回去自动续跑。真需要挂机的人自己打开另一档，并且知道代价。
+enum BackgroundMacroPolicy: String, Codable, CaseIterable, Hashable {
+    /// 仅在目标处于前台时执行（默认）。目标在后台 → 跳过该步，不停止宏。
+    case frontmostOnly
+    /// 允许后台执行，接受「点击可能把目标窗口切到前台」的代价。
+    case allowActivation
+
+    var title: String {
+        switch self {
+        case .frontmostOnly: return "仅前台执行"
+        case .allowActivation: return "允许后台执行"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .frontmostOnly:
+            return "目标不在最前面时自动跳过，切回去继续跑。不会打断你手上的事。"
+        case .allowActivation:
+            return "目标在后台也点。iOS-on-Mac 游戏会被系统切到前台，这是系统限制，无法避免。"
+        }
     }
 }
 

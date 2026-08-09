@@ -146,4 +146,40 @@ final class MacroRunnerTests: XCTestCase {
         let out = MacroRunner.applyDrift(toOffset: base, driftPercent: 5, windowSize: .zero) { _ in 1 }
         XCTAssertEqual(out, base, "窗口尺寸为 0 时不漂移，避免除零 / 无意义偏移")
     }
+
+    // MARK: - clickPlan（前台 / 后台分支）
+
+    /// 目标已在前台时必须和 KeyInterceptor 走完全相同的投递参数。
+    ///
+    /// 这是 v1.7.0 那两个用户可复现问题的直接成因，必须锁死：
+    /// ① 开了 suppressLocalInput → 宏步会吞掉玩家的物理鼠标，和按键映射叠用就是「鼠标闪 / 顿」；
+    /// ② 点完还去 activate → 游戏本来就在前台，等于每步重抢一次焦点，
+    ///    表现成「宏把游戏窗口又激活了一遍」。
+    func testForegroundTargetUsesPlainClickPath() {
+        let plan = MacroRunner.clickPlan(targetIsFront: true)
+        XCTAssertFalse(plan.suppressLocalInput, "前台绝不能屏蔽物理鼠标——会和按键映射叠成鼠标闪")
+        XCTAssertFalse(plan.tagTargetProcess)
+        XCTAssertFalse(plan.restoresPreviousApp, "目标本来就在前台，还原=每步重抢焦点")
+        XCTAssertEqual(plan, MacroRunner.ClickPlan(
+            suppressLocalInput: false, tagTargetProcess: false, restoresPreviousApp: false
+        ))
+    }
+
+    /// 目标在后台（用户显式选了「允许后台执行」）：三个开关全开。
+    /// suppress 防止用户正在动鼠标时把这一击挤掉；tag 让收尾的 movedBack 不广播给
+    /// 光标底下的别的 app；restore 负责把被抢走的前台还回去。
+    func testBackgroundTargetUsesSuppressedAndRestoringPath() {
+        XCTAssertEqual(MacroRunner.clickPlan(targetIsFront: false), MacroRunner.ClickPlan(
+            suppressLocalInput: true, tagTargetProcess: true, restoresPreviousApp: true
+        ))
+    }
+
+    /// 还原必须是防抖的，不能每步点完立刻抢回去——否则第 N 步的还原会和
+    /// 第 N+1 步的点击迎面撞上，前台在游戏和用户窗口之间来回横跳。
+    func testRestoreDebounceIsLongEnoughToCoalesceConsecutiveSteps() {
+        XCTAssertGreaterThanOrEqual(MacroRunner.restoreDebounce, 0.1,
+                                    "太短则连续宏步之间会反复抢焦点")
+        XCTAssertLessThanOrEqual(MacroRunner.restoreDebounce, 0.5,
+                                 "太长则用户会觉得点完半天才切回来")
+    }
 }

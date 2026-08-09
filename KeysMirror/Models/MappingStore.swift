@@ -59,7 +59,39 @@ final class MappingStore: ObservableObject {
         }
     }
 
+    /// 写盘防抖窗口。拖拽排序、连续调滑块这类操作会在几十毫秒内触发十几次 CRUD，
+    /// 每次都同步原子写盘（编码整份配置 + 落盘 + rename）会卡在主线程上，表现为界面发涩。
+    /// 300ms 内的连续改动合并成一次写。代价是极端情况下（进程被强杀）可能丢最后 300ms 的
+    /// 编辑——所以退出、失焦、导出前都会 `flush()` 强制落盘。
+    private static let saveDebounce: TimeInterval = 0.3
+    private var pendingSave: DispatchWorkItem?
+
+    /// 记录一次变更：**内存与 UI 立刻生效**，落盘延后合并。
+    ///
+    /// 通知必须同步发——菜单栏、overlay、拦截器都靠它刷新，延后会让界面比数据慢半拍。
     func save() {
+        NotificationCenter.default.post(name: .mappingStoreDidChange, object: self)
+
+        pendingSave?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingSave = nil
+            self.writeToDisk()
+        }
+        pendingSave = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.saveDebounce, execute: work)
+    }
+
+    /// 立刻把挂起的改动落盘。退出前、导出前、App 失去焦点时调用。
+    /// 没有挂起改动时是空操作，可以放心多调。
+    func flush() {
+        guard let pending = pendingSave else { return }
+        pending.cancel()
+        pendingSave = nil
+        writeToDisk()
+    }
+
+    private func writeToDisk() {
         do {
             let directory = fileURL.deletingLastPathComponent()
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -68,7 +100,6 @@ final class MappingStore: ObservableObject {
         } catch {
             NSLog("KeysMirror failed to save mappings: \(error.localizedDescription)")
         }
-        NotificationCenter.default.post(name: .mappingStoreDidChange, object: self)
     }
 
     func enabledProfile(bundleIdentifier: String) -> AppProfile? {
@@ -316,38 +347,31 @@ final class MappingStore: ObservableObject {
         var imported = 0
         for incoming in payload.profiles {
             switch mode {
+            // ⚠️ 这里**只能**改 id，其余字段必须整份照搬 incoming。
+            // 曾经的写法是逐个字段手工构造 AppProfile，结果每次给 AppProfile 加新字段
+            // 都会在这里被静默漏掉、落回默认值——HUD 的四个设置（显示与否 / 贴哪个角 /
+            // 形态 / 日志过滤）和每应用按压时长都这样丢过：导出再导入，这些设置全被清掉，
+            // 而且没有任何报错。整份复制之后，以后再加字段也不会重蹈覆辙。
             case .merge:
                 if let idx = profiles.firstIndex(where: { $0.bundleIdentifier.lowercased() == incoming.bundleIdentifier.lowercased() }) {
-                    // 保留原 profile id，覆盖其余字段（mappings / macros 直接替换）
-                    let replaced = AppProfile(
-                        id: profiles[idx].id,
-                        bundleIdentifier: incoming.bundleIdentifier,
-                        appName: incoming.appName,
-                        mappings: incoming.mappings,
-                        macros: incoming.macros,
-                        isEnabled: incoming.isEnabled,
-                        overlayOpacity: incoming.overlayOpacity,
-                        showOverlay: incoming.showOverlay
-                    )
+                    // 保留原 profile id（UI 的选中态、撤销记录都认这个 id），其余整份覆盖
+                    var replaced = incoming
+                    replaced.id = profiles[idx].id
                     profiles[idx] = replaced
                 } else {
                     profiles.append(incoming)
                 }
             case .addAsNew:
-                profiles.append(AppProfile(
-                    id: UUID(),
-                    bundleIdentifier: incoming.bundleIdentifier,
-                    appName: incoming.appName,
-                    mappings: incoming.mappings,
-                    macros: incoming.macros,
-                    isEnabled: incoming.isEnabled,
-                    overlayOpacity: incoming.overlayOpacity,
-                    showOverlay: incoming.showOverlay
-                ))
+                // 重新生成 id，避免和内存里已有的 profile 撞 id
+                var copy = incoming
+                copy.id = UUID()
+                profiles.append(copy)
             }
             imported += 1
         }
         save()
+        // 导入是一次性的大改动，用户会立刻期待「已经存好了」；不等防抖窗口，直接落盘。
+        flush()
         return imported
     }
 
