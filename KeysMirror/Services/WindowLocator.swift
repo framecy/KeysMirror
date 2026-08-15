@@ -430,4 +430,206 @@ final class WindowLocator {
         }
         return pid
     }
+
+    // MARK: - 窗口尺寸可调性
+
+    /// 一个目标窗口在「能不能改大小」上的实际情况。
+    struct ResizeProbe {
+        let appName: String
+        /// 拿不到窗口对象时为 nil——这类目标的 AX 树不完整，改尺寸无从谈起。
+        let currentSize: CGSize?
+        /// AX 声明 `AXSize` 可写。声明可写不等于真能改，所以还有下面这个实测字段。
+        let claimsSettable: Bool
+        /// 真的改了一次再读回来，尺寸确实变了。这才是可信的结论。
+        let actuallyResized: Bool
+        /// 失败时的说明，直接写给用户看。
+        let note: String
+    }
+
+    /// 实测目标窗口能否通过辅助功能 API 改大小，测完把尺寸复原。
+    ///
+    /// 为什么要「真的改一次」而不是只查 `AXUIElementIsAttributeSettable`：
+    /// 「设计给 iPad」的 App Store 应用由系统的 iOS 兼容层托管窗口，它的 Info.plist 里
+    /// `UIRequiresFullScreen = true` 就意味着窗口尺寸固定。AX 层完全可能报告「可写」，
+    /// 而设置请求被兼容层默默忽略——只查声明会得出错误结论。
+    ///
+    /// 改完立刻复原：这是探测，不该留下副作用。
+    func probeResizability(bundleIdentifier: String) -> ResizeProbe {
+        guard let app = NSWorkspace.shared.runningApplications.first(where: {
+            $0.bundleIdentifier == bundleIdentifier
+        }) else {
+            return ResizeProbe(appName: bundleIdentifier, currentSize: nil, claimsSettable: false,
+                               actuallyResized: false, note: "没在运行")
+        }
+        let name = app.localizedName ?? bundleIdentifier
+        let axApp = AXUtilities.makeAppElement(pid: app.processIdentifier)
+
+        var windowsValue: CFTypeRef?
+        let listResult = AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsValue)
+        guard listResult == .success, let windows = windowsValue as? [AXUIElement], let window = windows.first else {
+            return ResizeProbe(appName: name, currentSize: nil, claimsSettable: false, actuallyResized: false,
+                               note: "拿不到窗口对象（AXWindows code=\(listResult.rawValue)）——AX 树不完整，这条路走不通")
+        }
+
+        guard let before = axSize(of: window) else {
+            return ResizeProbe(appName: name, currentSize: nil, claimsSettable: false, actuallyResized: false,
+                               note: "读不到 AXSize")
+        }
+
+        var settable: DarwinBoolean = false
+        AXUIElementIsAttributeSettable(window, kAXSizeAttribute as CFString, &settable)
+
+        // 缩到八成试一下。取八成是因为足够大到能看出变化，又不至于把窗口弄得没法用。
+        var target = CGSize(width: (before.width * 0.8).rounded(), height: (before.height * 0.8).rounded())
+        guard let value = AXValueCreate(.cgSize, &target) else {
+            return ResizeProbe(appName: name, currentSize: before, claimsSettable: settable.boolValue,
+                               actuallyResized: false, note: "构造 AXValue 失败")
+        }
+        let setResult = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, value)
+        let after = axSize(of: window)
+        let changed = after.map { abs($0.width - before.width) >= 1 } ?? false
+
+        if changed, var restore = Optional(before), let restoreValue = AXValueCreate(.cgSize, &restore) {
+            AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, restoreValue)
+        }
+
+        var note: String
+        if changed {
+            note = "可以改（\(Int(before.width))x\(Int(before.height)) → \(Int(target.width))x\(Int(target.height))，已复原）"
+        } else {
+            note = "设置请求返回 code=\(setResult.rawValue)，但尺寸没变——外部强塞尺寸这条路不通"
+            // 强塞不行，再试「让应用自己改」：按窗口的 zoom 按钮。这两条是不同的路径——
+            // AXSize 是外部指定几何，zoom 是请求应用切换到它自己认可的尺寸，
+            // 被 UIRequiresFullScreen 锁住的窗口未必两条都堵。
+            note += " || " + probeZoomButton(window) + " || " + probePositionMove(window)
+            note += " || " + attributeInventory(of: window)
+        }
+        return ResizeProbe(appName: name, currentSize: before, claimsSettable: settable.boolValue,
+                           actuallyResized: changed, note: note)
+    }
+
+    /// 按一次目标窗口的 zoom 按钮，返回一句可直接写进日志的说明。
+    ///
+    /// 这是目前**唯一被证实能改变「设计给 iPad」窗口尺寸**的手段：直接写 `AXSize` 会被
+    /// 系统的 iOS 兼容层收下然后忽略，`AXPosition` 更是完全锁死，只有 zoom 这条
+    /// 「请求应用自己换尺寸」的路走得通。
+    ///
+    /// 与 `probeZoomButton` 的区别：那个是探测（按完立刻按回去），这个是**执行一次**，
+    /// 不复原——用来把窗口按到想要的档位，也用来摸清它在几个尺寸之间怎么循环。
+    func pressZoomButton(bundleIdentifier: String) -> String {
+        guard let app = NSWorkspace.shared.runningApplications.first(where: {
+            $0.bundleIdentifier == bundleIdentifier
+        }) else { return "\(bundleIdentifier) 没在运行" }
+        let name = app.localizedName ?? bundleIdentifier
+        let axApp = AXUtilities.makeAppElement(pid: app.processIdentifier)
+
+        var windowsValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsValue) == .success,
+              let windows = windowsValue as? [AXUIElement], let window = windows.first else {
+            return "\(name): 拿不到窗口"
+        }
+        var buttonValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, "AXZoomButton" as CFString, &buttonValue) == .success,
+              let buttonValue else { return "\(name): 没有 zoom 按钮" }
+
+        let before = axSize(of: window)
+        AXUIElementPerformAction(unsafeDowncast(buttonValue, to: AXUIElement.self), kAXPressAction as CFString)
+        // 1.2s：窗口缩放有动画，之前用 600ms 读回来的还是旧值，误判成「按了没反应」。
+        usleep(1_200_000)
+        let after = axSize(of: window)
+
+        func fmt(_ s: CGSize?) -> String { s.map { "\(Int($0.width))x\(Int($0.height))" } ?? "?" }
+        return "\(name): \(fmt(before)) → \(fmt(after))"
+    }
+
+    /// 按一次窗口的 zoom 按钮（绿灯的「缩放」行为），看尺寸有没有变；变了就按回去复原。
+    ///
+    /// 与直接写 `AXSize` 是两条不同的路：写 AXSize 是外部强塞一个几何尺寸，被系统的
+    /// iOS 兼容层直接忽略；zoom 是**请求应用自己**切换到它认可的另一个尺寸。
+    /// 「设计给 iPad」的窗口同时暴露了 AXZoomButton 与 AXFullScreenButton，说明这两件事
+    /// 在它这儿是分开的，所以值得单独试。
+    private func probeZoomButton(_ window: AXUIElement) -> String {
+        var buttonValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, "AXZoomButton" as CFString, &buttonValue) == .success,
+              let buttonValue else { return "zoom按钮: 没有" }
+        let button = unsafeDowncast(buttonValue, to: AXUIElement.self)
+        guard let before = axSize(of: window) else { return "zoom按钮: 读不到尺寸" }
+
+        let pressResult = AXUIElementPerformAction(button, kAXPressAction as CFString)
+        usleep(600_000)  // 给应用留出重新布局的时间
+        guard let after = axSize(of: window) else { return "zoom按钮: 按后读不到尺寸" }
+
+        let changed = abs(after.width - before.width) >= 1 || abs(after.height - before.height) >= 1
+        guard changed else {
+            return "zoom按钮: 按了(code=\(pressResult.rawValue))但尺寸没变"
+        }
+        // 变了就按回去——这是探测，不该改变用户的窗口状态
+        AXUIElementPerformAction(button, kAXPressAction as CFString)
+        usleep(600_000)
+        let restored = axSize(of: window).map { "\(Int($0.width))x\(Int($0.height))" } ?? "?"
+        return "zoom按钮: ✅ 有效 \(Int(before.width))x\(Int(before.height)) → "
+             + "\(Int(after.width))x\(Int(after.height))（已按回，现为 \(restored)）"
+    }
+
+    /// 实测窗口能不能挪位置。位置也挪不动就说明兼容层把窗口几何整个锁死了。
+    private func probePositionMove(_ window: AXUIElement) -> String {
+        var posValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &posValue) == .success,
+              let posValue, CFGetTypeID(posValue) == AXValueGetTypeID() else { return "位置: 读不到" }
+        var before = CGPoint.zero
+        AXValueGetValue(unsafeDowncast(posValue, to: AXValue.self), .cgPoint, &before)
+
+        var target = CGPoint(x: before.x + 40, y: before.y)
+        guard let targetValue = AXValueCreate(.cgPoint, &target) else { return "位置: 构造失败" }
+        AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, targetValue)
+        usleep(300_000)
+
+        var afterValue: CFTypeRef?
+        var after = CGPoint.zero
+        if AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &afterValue) == .success,
+           let afterValue, CFGetTypeID(afterValue) == AXValueGetTypeID() {
+            AXValueGetValue(unsafeDowncast(afterValue, to: AXValue.self), .cgPoint, &after)
+        }
+        let moved = abs(after.x - before.x) >= 1
+        if moved, var restore = Optional(before), let restoreValue = AXValueCreate(.cgPoint, &restore) {
+            AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, restoreValue)
+        }
+        return moved ? "位置: ✅ 能挪（已复原）" : "位置: ❌ 挪不动 —— 窗口几何被整个锁死"
+    }
+
+    /// 列出窗口暴露的全部 AX 属性及其可写性，另附可执行的 action（zoom / resize 按钮之类）。
+    /// 尺寸改不动时用它回答「还有没有别的口子」。
+    private func attributeInventory(of window: AXUIElement) -> String {
+        var namesValue: CFArray?
+        var parts: [String] = []
+
+        if AXUIElementCopyAttributeNames(window, &namesValue) == .success,
+           let names = namesValue as? [String] {
+            let writable = names.filter { name in
+                var settable: DarwinBoolean = false
+                return AXUIElementIsAttributeSettable(window, name as CFString, &settable) == .success
+                    && settable.boolValue
+            }
+            parts.append("属性(\(names.count))=[\(names.joined(separator: ","))]")
+            parts.append("其中可写=[\(writable.isEmpty ? "无" : writable.joined(separator: ","))]")
+        } else {
+            parts.append("属性列表读不到")
+        }
+
+        var actionsValue: CFArray?
+        if AXUIElementCopyActionNames(window, &actionsValue) == .success,
+           let actions = actionsValue as? [String], !actions.isEmpty {
+            parts.append("可执行动作=[\(actions.joined(separator: ","))]")
+        }
+        return parts.joined(separator: " | ")
+    }
+
+    private func axSize(of window: AXUIElement) -> CGSize? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &value) == .success,
+              let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+        var size = CGSize.zero
+        AXValueGetValue(unsafeDowncast(value, to: AXValue.self), .cgSize, &size)
+        return size
+    }
 }

@@ -10,7 +10,13 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-15
+    # ⚠️ 必须与 ci.yml 用同一款镜像，理由见那边的说明：project.yml 声明的是
+    # xcodeVersion 26.4 / SWIFT_VERSION 6.3，macos-15 镜像上的 Xcode 老得多，
+    # 编不过实际要发出去的这套代码。
+    #
+    # 这里曾经落后过一次：0fb9c08 把 CI 升到 macos-26 时漏了 release，
+    # 结果是「CI 全绿但一发版就挂」——两条流程的镜像必须一起改。
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -19,6 +25,13 @@ jobs:
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      # 与 CI 同款：把工具链版本打进日志，版本错配时一眼可辨。
+      - name: Toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+          ls /Applications | grep -i '^Xcode' || true
 
       - name: Install xcodegen
         run: brew install xcodegen

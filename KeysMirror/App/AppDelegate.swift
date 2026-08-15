@@ -11,6 +11,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferencesStore = PreferencesStore.shared
     private let globalHotkey = GlobalHotkeyManager.shared
 
+    /// 诊断：实测已配置的各个应用能否通过辅助功能 API 改窗口大小。
+    ///
+    /// 设 `KEYSMIRROR_PROBE_RESIZE=1` 启动即可，结果写进日志。放在 App 里而不是独立脚本，
+    /// 是因为这件事需要辅助功能权限——KeysMirror 本来就有，让用户为了跑一次诊断去给
+    /// 终端授权是本末倒置。
+    private func runResizeProbeIfRequested() {
+        guard ProcessInfo.processInfo.environment["KEYSMIRROR_PROBE_RESIZE"] == "1" else { return }
+        // 等一下再测：刚启动时目标 app 的 AX 树可能还没就绪，会得出假阴性。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            assumingMainActor {
+                let bundleIds = MappingStore.shared.profiles.map(\.bundleIdentifier)
+                AppLogger.shared.log("【窗口尺寸探测】开始，共 \(bundleIds.count) 个已配置应用", type: "ACTION")
+                for bundleId in bundleIds {
+                    let probe = WindowLocator.shared.probeResizability(bundleIdentifier: bundleId)
+                    let size = probe.currentSize.map { "\(Int($0.width))x\(Int($0.height))" } ?? "—"
+                    AppLogger.shared.log(
+                        "【窗口尺寸探测】\(probe.appName) | 当前 \(size) | AX声明可写=\(probe.claimsSettable) | "
+                        + "实测可改=\(probe.actuallyResized ? "✅ 是" : "❌ 否") | \(probe.note)",
+                        type: probe.actuallyResized ? "ACTION" : "WARN"
+                    )
+                }
+                AppLogger.shared.log("【窗口尺寸探测】结束", type: "ACTION")
+            }
+        }
+    }
+
+    /// 诊断/工具：对指定 bundle id 的窗口按一次 zoom 按钮，日志记录前后尺寸。
+    ///
+    /// 设 `KEYSMIRROR_WINDOW_ZOOM=<bundleId>` 启动即可，可反复执行。
+    /// 存在的理由有两个：一是探测阶段把窗口 zoom 大了需要能按回去；二是要摸清这个
+    /// 窗口的 zoom 到底在几个尺寸之间循环——它是目前唯一被证实能改变尺寸的手段
+    /// （直接写 AXSize 被系统的 iOS 兼容层忽略，位置更是完全锁死）。
+    private func runWindowZoomIfRequested() {
+        guard let bundleId = ProcessInfo.processInfo.environment["KEYSMIRROR_WINDOW_ZOOM"],
+              !bundleId.isEmpty else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            assumingMainActor {
+                let result = WindowLocator.shared.pressZoomButton(bundleIdentifier: bundleId)
+                AppLogger.shared.log("【窗口 zoom】\(result)", type: "ACTION")
+            }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 防御：若上次运行在 CGAssociateMouseAndMouseCursorPosition(0) 后崩溃，
         // 光标会永久冻结。启动时强制恢复关联，让鼠标立刻可用。
@@ -58,6 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         ActivationAuditor.shared.start()
         preferencesStore.applyDockVisibility()
+        runResizeProbeIfRequested()
+        runWindowZoomIfRequested()
         registerGlobalHotkey()
         auditLegacyMappings()
         OnboardingController.shared.showIfNeeded()
