@@ -105,6 +105,86 @@ final class ClickSimulatorTests: XCTestCase {
         ])
     }
 
+    /// 连击必须跑在**一次**光标序列里：原位只取一次，hide/warp/associate 各只做一次。
+    ///
+    /// 这是「鼠标箭头被拽到游戏里回不来」的直接成因。原先 MacroRunner 按 clickCount
+    /// for 循环调 leftClick，每发都重新取一次原位；而连击是零间隔背靠背投递的，
+    /// 第二发取原位时第一发的 warp 还没落定，取到的是已经被移到点击点的位置，
+    /// 收尾就把光标「还原」到了点击点上。
+    func testBurstClickSamplesCursorOriginExactlyOnce() {
+        var calls: [String] = []
+        var saveCount = 0
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: {
+                saveCount += 1
+                calls.append("save")
+                // 模拟真实故障：第二次再取就会拿到已经被移过去的点击点
+                return saveCount == 1 ? CGPoint(x: 100, y: 100) : CGPoint(x: 500, y: 500)
+            },
+            associate: { connected in calls.append("associate(\(connected ? "true" : "false"))") },
+            warp: { p in calls.append("warp(\(Int(p.x)),\(Int(p.y)))") },
+            post: { calls.append(Self.describe($0)) },
+            hide: { calls.append("hide") },
+            unhide: { calls.append("unhide") }
+        )
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { _ in calls.append("sleep") }
+        defer { Self.restore() }
+
+        ClickSimulator.shared.leftClick(at: CGPoint(x: 500, y: 500), targetApp: nil, clickCount: 2)
+
+        XCTAssertEqual(saveCount, 1, "原位只能取一次，取第二次就会拿到被移过去的位置")
+        XCTAssertEqual(calls.filter { $0 == "hide" }.count, 1, "整段连击只藏一次光标")
+        XCTAssertEqual(calls.filter { $0.hasPrefix("warp") }.count, 1, "只还原一次")
+        XCTAssertEqual(calls.filter { $0 == "associate(false)" }.count, 1)
+        XCTAssertEqual(calls, [
+            "save",
+            "hide",
+            "associate(false)",
+            "moved(500,500)", "down(500,500)", "sleep", "moved(500,500)", "up(500,500)",
+            "moved(500,500)", "down(500,500)", "sleep", "moved(500,500)", "up(500,500)",
+            "moved(100,100)",       // 送回的是**第一次**取到的真实原位
+            "warp(100,100)",        // 还原到真实原位，而不是点击点
+            "associate(true)",
+            "unhide"
+        ])
+    }
+
+    /// 连击在方案 A（原生 App / postToPid）下同样只投递一轮序列，且全程不碰光标。
+    func testBurstClickOnPidPathRepeatsWithoutTouchingCursor() {
+        var cursorCalls: [String] = []
+        var pidPosts: [String] = []
+        ClickSimulator.shared.cursorOps = ClickSimulator.CursorOps(
+            currentLocation: { cursorCalls.append("save"); return .zero },
+            associate: { cursorCalls.append("associate(\($0))") },
+            warp: { _ in cursorCalls.append("warp") },
+            post: { cursorCalls.append(Self.describe($0)) },
+            hide: { cursorCalls.append("hide") },
+            unhide: { cursorCalls.append("unhide") }
+        )
+        ClickSimulator.shared.postToPid = { event, pid in pidPosts.append(Self.describe(event)) }
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        ClickSimulator.shared.leftClick(at: .zero, targetApp: NSRunningApplication.current, clickCount: 3)
+
+        XCTAssertTrue(cursorCalls.isEmpty, "方案 A 全程不得触碰光标")
+        XCTAssertEqual(pidPosts.count, 6, "3 连击 = 3 对 down/up")
+    }
+
+    /// clickCount 传 0 或负数时保底打一次，不能一次都不发。
+    func testBurstClickClampsNonPositiveCount() {
+        var pidPosts = 0
+        ClickSimulator.shared.postToPid = { _, _ in pidPosts += 1 }
+        ClickSimulator.shared.runClickSequence = { work in work() }
+        ClickSimulator.shared.sleepForDwell = { _ in }
+        defer { Self.restore() }
+
+        ClickSimulator.shared.leftClick(at: .zero, targetApp: NSRunningApplication.current, clickCount: 0)
+        XCTAssertEqual(pidPosts, 2, "0 次也要保底发一对 down/up")
+    }
+
     /// 光标已经在点击点附近时跳过隐藏。
     ///
     /// 隐藏本身是有代价的：指针会凭空消失整个 dwell（40ms）。当 sprite 的位移小到
@@ -239,6 +319,47 @@ final class ClickSimulatorTests: XCTestCase {
     }
 
     // MARK: - 实验开关：强制 postToPid
+
+    /// 投递方式的实验开关：只认这四个确切的名字，拼错 / 没设一律退回现状。
+    /// 这个开关会改变事件的投递端口和窗口字段，误开会静默改掉所有 iOS-on-Mac 点击的行为。
+    func testDeliveryModeFallsBackToStandard() {
+        XCTAssertEqual(ClickSimulator.deliveryMode(environment: [:]), .standard)
+        XCTAssertEqual(ClickSimulator.deliveryMode(environment: ["KEYSMIRROR_DELIVERY": "typo"]), .standard)
+        XCTAssertEqual(ClickSimulator.deliveryMode(environment: ["KEYSMIRROR_DELIVERY": ""]), .standard)
+        XCTAssertEqual(ClickSimulator.deliveryMode(environment: ["KEYSMIRROR_DELIVERY": "annotated"]), .annotated)
+        XCTAssertEqual(ClickSimulator.deliveryMode(environment: ["KEYSMIRROR_DELIVERY": "windowID"]), .windowID)
+        XCTAssertEqual(ClickSimulator.deliveryMode(environment: ["KEYSMIRROR_DELIVERY": "annotatedWindowID"]), .annotatedWindowID)
+    }
+
+    /// 各模式对应的投递端口与是否填窗口字段，必须锁死——这两条决定了实验测的到底是什么。
+    func testDeliveryModeRouting() {
+        XCTAssertEqual(ClickSimulator.DeliveryMode.standard.tapLocation, .cgSessionEventTap)
+        XCTAssertEqual(ClickSimulator.DeliveryMode.windowID.tapLocation, .cgSessionEventTap)
+        XCTAssertEqual(ClickSimulator.DeliveryMode.annotated.tapLocation, .cgAnnotatedSessionEventTap)
+        XCTAssertEqual(ClickSimulator.DeliveryMode.annotatedWindowID.tapLocation, .cgAnnotatedSessionEventTap)
+
+        XCTAssertFalse(ClickSimulator.DeliveryMode.standard.setsWindowID)
+        XCTAssertFalse(ClickSimulator.DeliveryMode.annotated.setsWindowID)
+        XCTAssertTrue(ClickSimulator.DeliveryMode.windowID.setsWindowID)
+        XCTAssertTrue(ClickSimulator.DeliveryMode.annotatedWindowID.setsWindowID)
+    }
+
+    /// 生产默认必须是现状，否则一次误发布就会把所有用户的点击行为改掉。
+    func testDeliveryModeDefaultsToStandardInThisProcess() {
+        XCTAssertEqual(ClickSimulator.deliveryMode, .standard)
+    }
+
+    /// 实验开关必须只在显式设成 "1" 时才打开。误开的后果是所有 iOS-on-Mac 点击静默失效
+    /// （事件进了进程但没人翻译成触摸），而且没有任何报错——所以宁可严格。
+    func testForcePostToPidRequiresExplicitOptIn() {
+        XCTAssertTrue(ClickSimulator.forcePostToPid(environment: ["KEYSMIRROR_FORCE_POSTTOPID": "1"]))
+        XCTAssertFalse(ClickSimulator.forcePostToPid(environment: [:]),
+                       "没设环境变量 → 正常走方案 B")
+        for value in ["0", "", "true", "YES", "yes", "2"] {
+            XCTAssertFalse(ClickSimulator.forcePostToPid(environment: ["KEYSMIRROR_FORCE_POSTTOPID": value]),
+                           "只认 \"1\"，\"\(value)\" 不该打开实验路径")
+        }
+    }
 
     /// 开关打开时，本该走方案 B 的 iOS-on-Mac 应用必须改走方案 A：
     /// 全程不得触碰光标（这正是「指针不闪烁 + 不需要前台」的来源）。

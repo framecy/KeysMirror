@@ -50,8 +50,13 @@ struct Preferences: Codable {
 ///
 /// 与其让用户遇到「宏怎么老把游戏翻上来」而困惑，不如默认老实一点：目标不在前台就
 /// 跳过这一步，用户切回去自动续跑。真需要挂机的人自己打开另一档，并且知道代价。
+///
+/// ⚠️ 这个代价**只存在于 iOS-on-Mac 应用**。原生 macOS App 走 `postToPid`，事件直接进
+/// 目标进程：不动光标、不激活窗口、也不受遮挡影响，后台点击对用户零副作用。
+/// 因此「仅前台执行」不约束原生 App——见 `MacroRunner.shouldSkipBecauseBackground`。
 enum BackgroundMacroPolicy: String, Codable, CaseIterable, Hashable {
-    /// 仅在目标处于前台时执行（默认）。目标在后台 → 跳过该步，不停止宏。
+    /// 仅在目标处于前台时执行（默认）。**仅约束 iOS-on-Mac 应用**：它们在后台 → 跳过该步，
+    /// 不停止宏。原生 macOS App 不受此档约束，后台照跑。
     case frontmostOnly
     /// 允许后台执行，接受「点击可能把目标窗口切到前台」的代价。
     case allowActivation
@@ -66,7 +71,7 @@ enum BackgroundMacroPolicy: String, Codable, CaseIterable, Hashable {
     var detail: String {
         switch self {
         case .frontmostOnly:
-            return "目标不在最前面时自动跳过，切回去继续跑。不会打断你手上的事。"
+            return "普通 Mac 应用后台照跑；手游（iOS-on-Mac）不在最前面时自动跳过，切回去继续。都不会打断你手上的事。"
         case .allowActivation:
             return "目标在后台也点。iOS-on-Mac 游戏会被系统切到前台，这是系统限制，无法避免。"
         }

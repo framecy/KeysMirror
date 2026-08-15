@@ -103,12 +103,94 @@ final class ClickSimulator {
     /// **postToPid 对 iOS-on-Mac 运行时无效**。同一坐标关掉开关走方案 B 有响应、打开走方案 A
     /// 无响应，对照明确。原因是架构性的——「指针 → UITouch」的翻译由系统框架层完成，
     /// 而那一层订阅的是 session 级事件流；postToPid 恰好绕过它，事件进了进程却没人翻译。
-    /// 这跟 PlayCover 侧载应用的表现一致，两类 iOS-on-Mac 应用没有区别。
     ///
     /// 因此**指针闪烁无法根除**，只能靠 clickDwell 收窄 + 点击期间隐藏光标来压缩。
-    /// 保留此接缝仅为单测可注入；生产恒为 false，不再暴露成用户开关——
-    /// 打开会让所有点击静默失效。
-    var forcePostToPidProvider: () -> Bool = { false }
+    ///
+    /// 2026-08-15 复测：App Store 版阴阳师（`Wrapper/` 布局，签名 Apple iPhone OS Application
+    /// Signing）上同样无响应，与问道一致——**「App Store 设计给 iPad 版」这一类确定不认 postToPid**。
+    ///
+    /// ⚠️ **别把这个结论推广到 PlayCover 侧载应用**。这里原本写着「两类没有区别」，那是没有
+    /// 依据的推断，且已经误导过一次排查：PlayCover 是把应用侧载成标准 macOS 应用、往进程里
+    /// 注入代码自己 hook 输入，未必依赖系统兼容层那条 session 流。这个区别很关键——postToPid
+    /// 完全绕开 Window Server，后台点击既不激活窗口也不动光标，正是「挂机不打扰用户」唯一
+    /// 可能的实现路径。PlayCover 侧未验证，需要时用下面的开关实测，不要靠推断。
+    ///
+    /// 所以保留这个接缝做真机 A/B 对照：设环境变量 `KEYSMIRROR_FORCE_POSTTOPID=1` 启动即可
+    /// 强制 iOS-on-Mac 目标走方案 A。默认仍是 false，不影响正常使用。
+    var forcePostToPidProvider: () -> Bool = {
+        ClickSimulator.forcePostToPid(environment: ProcessInfo.processInfo.environment)
+    }
+
+    /// 抽成纯函数便于单测：只有显式设成 "1" 才启用实验路径，其余一律 false。
+    static func forcePostToPid(environment: [String: String]) -> Bool {
+        environment["KEYSMIRROR_FORCE_POSTTOPID"] == "1"
+    }
+
+    /// session 投递的几种变体，用来找「点得中但不激活窗口」的组合。
+    ///
+    /// 到目前为止所有实验都只动了**事件源**（suppress 与否）和**进程标记**
+    /// （`eventTargetUnixProcessID`），从没碰过事件自身的**窗口定位字段**，也没换过
+    /// 投递端口。这两个都是公开 API，且正好是 Window Server 做「这一下该给谁、要不要
+    /// 激活它」判断时会看的东西——没试过就断言「做不到」是不成立的。
+    ///
+    /// 用环境变量 `KEYSMIRROR_DELIVERY` 选择，默认 `standard`（现状，行为不变）。
+    enum DeliveryMode: String {
+        /// 现状：`.cgSessionEventTap` + 进程标记。
+        case standard
+        /// 换投递端口：`.cgAnnotatedSessionEventTap`。它比普通 session tap 多带一层窗口注解，
+        /// 系统自己合成带窗口归属的事件时走的就是这条。
+        case annotated
+        /// 额外填上「这一下是给哪个窗口的」：`kCGMouseEventWindowUnderMousePointer` 与
+        /// `...ThatCanHandleThisEvent`。真实鼠标事件里这两个字段由 Window Server 填，
+        /// 合成事件默认是 0。填上之后它还做不做命中测试、还激不激活，正是要测的。
+        case windowID
+        /// 两者叠加。
+        case annotatedWindowID
+
+        nonisolated var tapLocation: CGEventTapLocation {
+            switch self {
+            case .annotated, .annotatedWindowID: return .cgAnnotatedSessionEventTap
+            case .standard, .windowID: return .cgSessionEventTap
+            }
+        }
+
+        nonisolated var setsWindowID: Bool {
+            switch self {
+            case .windowID, .annotatedWindowID: return true
+            case .standard, .annotated: return false
+            }
+        }
+    }
+
+    /// 未识别的值一律退回 `standard`：实验开关绝不能因为拼错就把生产行为改掉。
+    nonisolated static func deliveryMode(environment: [String: String]) -> DeliveryMode {
+        environment["KEYSMIRROR_DELIVERY"].flatMap(DeliveryMode.init(rawValue:)) ?? .standard
+    }
+
+    /// `nonisolated`：启动时求值一次的 Sendable 常量，之后只读；而 `CursorOps.system` 的
+    /// post 闭包要在 clickQueue（非主线程）上读它。
+    nonisolated static let deliveryMode: DeliveryMode =
+        ClickSimulator.deliveryMode(environment: ProcessInfo.processInfo.environment)
+
+    /// 目标进程最大的那扇 layer-0 窗口的 window id。
+    /// 取面积最大的，理由同 `WindowLocator.mainWindowFrame`：游戏进程常挂着输入法候选框
+    /// 之类的小窗口，它们可能排在主窗口前面。
+    nonisolated static func mainWindowID(ofPid pid: pid_t) -> CGWindowID? {
+        guard let infos = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+        ) as? [[String: Any]] else { return nil }
+        var best: (id: CGWindowID, area: CGFloat)?
+        for info in infos {
+            guard (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
+                  let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+                  let number = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+                  let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict) else { continue }
+            let area = bounds.width * bounds.height
+            if best == nil || area > best!.area { best = (number, area) }
+        }
+        return best?.id
+    }
 
     /// 测试接缝：方案 A 的投递。与方案 B 的 `cursorOps` 对称，
     /// 让「走了哪条路径」可断言，且单测不会真的往进程里投递事件。
@@ -138,16 +220,24 @@ final class ClickSimulator {
     ///   在后台场景用 `completion` 还原前台，前台场景则根本不要走这套参数。
     /// - Parameter dwell: 按下与抬起之间的停留时长。传 nil 用全局默认 `clickDwell`。
     ///   每个应用配置可以覆盖它——见 `AppProfile.clickDwellMs`。
-    /// - Parameter completion: 点击序列投递完成后在主线程执行的回调。
+    /// - Parameter clickCount: 连击次数。**必须在这里传，不要在调用方 for 循环调多次**——
+    ///   光标的「记下原位 → 移到点击点 → 还原」整套动作是按一次调用配平的，调多次就会
+    ///   每次重新取一遍原位。而连击是零间隔背靠背投递的，第二次取原位时第一次的 warp
+    ///   往往还没落定，取到的是已经被移过去的位置，最后就把光标还原到了点击点上——
+    ///   表现为「鼠标箭头被拽到游戏里回不来」。合并成一次投递后原位只取一次，
+    ///   hide/warp/associate 也只做一次，顺带少了几次光标抖动。
+    /// - Parameter completion: 整个连击序列投递完成后在主线程执行**一次**的回调。
     ///   仅后台宏用于「若本次点击把目标顶到前台，则还原点击前的前台 app」。
     func leftClick(
         at point: CGPoint,
         targetApp: NSRunningApplication? = nil,
         dwell dwellOverride: TimeInterval? = nil,
+        clickCount: Int = 1,
         suppressLocalInput: Bool = false,
         tagTargetProcess: Bool = false,
         completion: (() -> Void)? = nil
     ) {
+        let repeats = max(1, clickCount)
         let source = suppressLocalInput ? suppressingEventSource : eventSource
         guard
             let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
@@ -177,9 +267,11 @@ final class ClickSimulator {
             let post = postToPid
             let savedCompletion = completion
             runClickSequence {
-                post(down, pid)
-                sleep(dwell)
-                post(up, pid)
+                for _ in 0..<repeats {
+                    post(down, pid)
+                    sleep(dwell)
+                    post(up, pid)
+                }
                 if let savedCompletion {
                     DispatchQueue.main.async { savedCompletion() }
                 }
@@ -214,6 +306,15 @@ final class ClickSimulator {
                     event.setIntegerValueField(.eventTargetUnixProcessID, value: Int64(pid))
                 }
             }
+            // 实验：把「这一下是给哪扇窗口的」显式写进事件。真实鼠标事件里这两个字段由
+            // Window Server 填，合成事件默认为 0——也就是说我们一直在让它自己去做命中测试，
+            // 而命中测试正是「点了未激活的窗口 → 激活它」那条路径的入口。
+            if Self.deliveryMode.setsWindowID, pid > 0, let windowID = Self.mainWindowID(ofPid: pid) {
+                for event in [moved, down, up, reassert].compactMap({ $0 }) {
+                    event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(windowID))
+                    event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(windowID))
+                }
+            }
             let ops = cursorOps
 
             let audit = tagTargetProcess
@@ -238,11 +339,15 @@ final class ClickSimulator {
                 let shouldHideCursor = travel > Self.cursorHideDistanceThreshold
                 if shouldHideCursor { ops.hide() }
                 ops.associate(false)
-                ops.post(moved)
-                ops.post(down)
-                sleep(dwell)
-                if let reassert { ops.post(reassert) }
-                ops.post(up)
+                // 连击整个跑在这一次 disassociate 区间里：原位只取一次（上面那行），
+                // 中途绝不重新取，否则会取到已经被移到点击点的位置（见 clickCount 的说明）。
+                for _ in 0..<repeats {
+                    ops.post(moved)
+                    ops.post(down)
+                    sleep(dwell)
+                    if let reassert { ops.post(reassert) }
+                    ops.post(up)
+                }
                 // 把目标 app 内部记的指针也送回原处，避免在按钮上留下 hover 态。
                 //
                 // 这一条**必须**和前面四个事件一样打上目标进程标记：它的坐标是用户光标的真实
@@ -319,7 +424,8 @@ final class ClickSimulator {
             currentLocation: { CGEvent(source: nil)?.location ?? .zero },
             associate: { connected in CGAssociateMouseAndMouseCursorPosition(connected ? 1 : 0) },
             warp: { CGWarpMouseCursorPosition($0) },
-            post: { $0.post(tap: .cgSessionEventTap) },
+            // 投递端口由实验模式决定，默认 .cgSessionEventTap（现状）。
+            post: { $0.post(tap: ClickSimulator.deliveryMode.tapLocation) },
             hide: { CGDisplayHideCursor(CGMainDisplayID()) },
             unhide: { CGDisplayShowCursor(CGMainDisplayID()) }
         )
@@ -355,9 +461,12 @@ final class ClickSimulator {
             if let requiresIPhoneOS = plist["LSRequiresIPhoneOS"] as? Bool {
                 return !requiresIPhoneOS
             }
-            // 后备判定：部分 PlayCover 游戏（如阴阳师 com.netease.onmyoji）
-            // 不含 LSRequiresIPhoneOS，但 DTPlatformName / UIDeviceFamily 仍保留了
-            // iOS 特征。不额外检查会误走 postToPid 导致点击完全无响应。
+            // 后备判定：部分 PlayCover 游戏不含 LSRequiresIPhoneOS，但 DTPlatformName /
+            // UIDeviceFamily 仍保留了 iOS 特征。不额外检查会误走 postToPid 导致点击完全无响应。
+            // （注：这里原先举的例子是「阴阳师 com.netease.onmyoji」，但同一个 bundleId 既可能
+            // 是 PlayCover 侧载版、也可能是 App Store「设计给 iPad」版，**光看 bundleId 判断不了
+            // 是哪一种**——要看 bundle 布局：`Wrapper/`+`WrappedBundle` 是 App Store 版，
+            // 根目录直接放 Info.plist 是 PlayCover 版。别再用 bundleId 反推运行时类型。）
             if let platform = plist["DTPlatformName"] as? String,
                platform.lowercased().contains("iphoneos") {
                 return false
